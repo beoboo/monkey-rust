@@ -1,19 +1,19 @@
 use crate::token::*;
 
-struct Lexer {
+pub(crate) struct Lexer {
     input: String,
     position: usize,
 }
 
 impl Lexer {
-    fn new(input: &str) -> Self {
+    pub(crate) fn new(input: &str) -> Self {
         Self {
             input: input.to_string(),
             position: 0,
         }
     }
 
-    fn next_token(&mut self) -> Token {
+    pub(crate) fn next_token(&mut self) -> Token {
         let mut ch = self.read_next();
 
         while is_whitespace(ch) {
