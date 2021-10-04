@@ -1,6 +1,6 @@
+use crate::ast::{DummyExpression, Identifier, LetStatement, Program, Statement, ReturnStatement};
 use crate::lexer::Lexer;
 use crate::token::{Token, TokenType};
-use crate::ast::{Program, Statement, LetStatement, Identifier, DummyExpression};
 
 struct Parser {
     lexer: Lexer,
@@ -13,7 +13,7 @@ impl Parser {
     fn new(mut lexer: Lexer) -> Self {
         let cur_token = lexer.next_token();
         let next_token = lexer.next_token();
-        Self{lexer: lexer, cur_token, next_token, errors: vec![] }
+        Self { lexer: lexer, cur_token, next_token, errors: vec![] }
     }
 
     fn next_token(&mut self) {
@@ -36,7 +36,7 @@ impl Parser {
             self.next_token();
         }
 
-        Some(Program{
+        Some(Program {
             statements
         })
     }
@@ -48,7 +48,13 @@ impl Parser {
                     Some(stmt) => Some(Box::new(stmt)),
                     _ => None,
                 }
-            },
+            }
+            TokenType::Return => {
+                match self.parse_return_statement() {
+                    Some(stmt) => Some(Box::new(stmt)),
+                    _ => None,
+                }
+            }
             _ => None
         }
     }
@@ -56,14 +62,14 @@ impl Parser {
     fn parse_let_statement(&mut self) -> Option<LetStatement> {
         let let_token = self.cur_token.clone();
         if !self.expect_next(TokenType::Ident) {
-            return None
+            return None;
         }
 
         let id_token = self.cur_token.clone();
-        let identifier = Identifier{token: id_token.clone(), value: id_token.literal.clone()};
+        let identifier = Identifier { token: id_token.clone(), value: id_token.literal.clone() };
 
         if !self.expect_next(TokenType::Assign) {
-            return None
+            return None;
         }
 
         while !self.cur_token_is(TokenType::Semicolon) {
@@ -71,10 +77,24 @@ impl Parser {
             self.next_token();
         }
 
-        Some(LetStatement{
+        Some(LetStatement {
             token: let_token,
             name: identifier,
-            value: Box::new(DummyExpression{})
+            value: Box::new(DummyExpression {}),
+        })
+    }
+
+    fn parse_return_statement(&mut self) -> Option<ReturnStatement> {
+        let token = self.cur_token.clone();
+
+        while !self.cur_token_is(TokenType::Semicolon) {
+            // println!("Found semicolon");
+            self.next_token();
+        }
+
+        Some(ReturnStatement {
+            token,
+            return_value: Box::new(DummyExpression {}),
         })
     }
 
@@ -107,8 +127,9 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::{Node, ReturnStatement};
+
     use super::*;
-    use crate::ast::Node;
 
     #[test]
     fn let_statement() {
@@ -130,10 +151,10 @@ mod tests {
         }
 
         let expected_identifiers = vec![
-            "x", "y", "foobar"
+            "x", "y", "foobar",
         ];
 
-        for i in 0.. expected_identifiers.len() {
+        for i in 0..expected_identifiers.len() {
             let name = expected_identifiers[i];
             let statement = program.statements[i].as_ref();
 
@@ -141,12 +162,42 @@ mod tests {
         }
     }
 
-    fn assert_let_statement(stmt: &dyn Statement, name: &str) {
-        if stmt.token_literal() != "let" {
-            panic!("Not a LET statement, got {}", stmt.token_literal())
+    #[test]
+    fn return_statement() {
+        let input = "
+        return 5;
+        return 10;
+        return 993322;
+        ";
+
+        let lexer = Lexer::new(input);
+
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program().unwrap_or_else(|| panic!("Invalid parsed program"));
+        check_parser_errors(&parser);
+
+        if program.statements.len() != 3 {
+            panic!("Program has not 3 statements, got {}", program.statements.len())
         }
 
-        let let_statement = stmt.as_any().downcast_ref::<LetStatement>().unwrap_or_else(|| {panic!("Not a LET statement")});
+        for stmt in program.statements {
+            let _ = stmt.as_any().downcast_ref::<ReturnStatement>()
+                .unwrap_or_else(|| { panic!("Not a \"return\" statement") });
+
+            if stmt.token_literal() != "return" {
+                panic!("Not a \"return\" statement, got {}", stmt.token_literal())
+            }
+        }
+    }
+
+    fn assert_let_statement(stmt: &dyn Statement, name: &str) {
+        if stmt.token_literal() != "let" {
+            panic!("Not a \"let\" statement, got {}", stmt.token_literal())
+        }
+
+        let let_statement = stmt.as_any().downcast_ref::<LetStatement>()
+            .unwrap_or_else(|| { panic!("Not a \"let\" statement") });
         if let_statement.name.value != name {
             panic!("LET statement name value not {}, got {}", let_statement.name.value, name)
         }

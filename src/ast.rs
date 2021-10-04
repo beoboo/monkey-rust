@@ -84,3 +84,21 @@ impl Node for LetStatement {
 
 impl Statement for LetStatement {
 }
+
+pub struct ReturnStatement {
+    pub token: Token,
+    pub return_value: Box<dyn Expression>,
+}
+
+impl Node for ReturnStatement {
+    fn token_literal(&self) -> &str {
+        return self.token.literal.as_str();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Statement for ReturnStatement {
+}
