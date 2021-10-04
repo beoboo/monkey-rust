@@ -1,7 +1,7 @@
 use core::fmt;
 use std::fmt::Formatter;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash, Copy)]
 pub enum TokenType {
     Assign,
     Asterisk,
@@ -15,7 +15,7 @@ pub enum TokenType {
     Gt,
     Illegal,
     If,
-    Number,
+    Integer,
     LBrace,
     Let,
     LParen,

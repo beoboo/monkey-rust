@@ -1,26 +1,24 @@
 use crate::token::*;
 
-pub(crate) struct Lexer {
+pub struct Lexer {
     input: String,
     position: usize,
 }
 
 impl Lexer {
-    pub(crate) fn new(input: &str) -> Self {
+    pub fn new(input: &str) -> Self {
         Self {
             input: input.to_string(),
             position: 0,
         }
     }
 
-    pub(crate) fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Token {
         let mut ch = self.read_next();
 
         while is_whitespace(ch) {
-            // println!("Skipping \"{}\"", ch);
             ch = self.read_next();
         }
-        // println!("ch: \"{}\"", ch);
 
         match ch {
             '=' => {
@@ -60,14 +58,11 @@ impl Lexer {
             '\0' => Token::new(TokenType::EOF, ""),
             _ => {
                 if is_alpha(ch) {
-                    // println!("alpha");
                     let literal = self.read_identifier();
                     Token::new(Token::lookup_keyword(literal), literal)
                 } else if is_digit(ch) {
-                    // println!("digit");
-                    Token::new(TokenType::Number, self.read_number())
+                    Token::new(TokenType::Integer, self.read_integer())
                 } else {
-                    // println!("illegal: {}", ch);
                     Token::new(TokenType::Illegal, ch.to_string().as_str())
                 }
             }
@@ -97,18 +92,16 @@ impl Lexer {
 
         let mut ch = self.read_char(position);
         while is_alpha(ch) {
-            // println!("{}", ch);
             position += 1;
             ch = self.read_char(position);
         }
 
         let ident = self.input[(self.position - 1)..position].as_ref();
-        // println!("Ident: \"{}\"", ident);
         self.position = position;
         ident
     }
 
-    fn read_number(&mut self) -> &str {
+    fn read_integer(&mut self) -> &str {
         let mut position = self.position;
 
         let mut ch = self.read_char(position);
@@ -123,6 +116,9 @@ impl Lexer {
     }
 
     fn read_char(&self, position: usize) -> char {
+        if self.input.len() <= position {
+            return '\0';
+        }
         self.input.chars().nth(position).unwrap()
     }
 }
@@ -205,12 +201,12 @@ if (5 < 10) {
             Token::new(TokenType::Let, "let"),
             Token::new(TokenType::Ident, "five"),
             Token::new(TokenType::Assign, "="),
-            Token::new(TokenType::Number, "5"),
+            Token::new(TokenType::Integer, "5"),
             Token::new(TokenType::Semicolon, ";"),
             Token::new(TokenType::Let, "let"),
             Token::new(TokenType::Ident, "ten"),
             Token::new(TokenType::Assign, "="),
-            Token::new(TokenType::Number, "10"),
+            Token::new(TokenType::Integer, "10"),
             Token::new(TokenType::Semicolon, ";"),
             Token::new(TokenType::Let, "let"),
             Token::new(TokenType::Ident, "add"),
@@ -242,19 +238,19 @@ if (5 < 10) {
             Token::new(TokenType::Minus, "-"),
             Token::new(TokenType::Slash, "/"),
             Token::new(TokenType::Asterisk, "*"),
-            Token::new(TokenType::Number, "5"),
+            Token::new(TokenType::Integer, "5"),
             Token::new(TokenType::Semicolon, ";"),
-            Token::new(TokenType::Number, "5"),
+            Token::new(TokenType::Integer, "5"),
             Token::new(TokenType::Lt, "<"),
-            Token::new(TokenType::Number, "10"),
+            Token::new(TokenType::Integer, "10"),
             Token::new(TokenType::Gt, ">"),
-            Token::new(TokenType::Number, "5"),
+            Token::new(TokenType::Integer, "5"),
             Token::new(TokenType::Semicolon, ";"),
             Token::new(TokenType::If, "if"),
             Token::new(TokenType::LParen, "("),
-            Token::new(TokenType::Number, "5"),
+            Token::new(TokenType::Integer, "5"),
             Token::new(TokenType::Lt, "<"),
-            Token::new(TokenType::Number, "10"),
+            Token::new(TokenType::Integer, "10"),
             Token::new(TokenType::RParen, ")"),
             Token::new(TokenType::LBrace, "{"),
             Token::new(TokenType::Return, "return"),
@@ -267,13 +263,13 @@ if (5 < 10) {
             Token::new(TokenType::False, "false"),
             Token::new(TokenType::Semicolon, ";"),
             Token::new(TokenType::RBrace, "}"),
-            Token::new(TokenType::Number, "10"),
+            Token::new(TokenType::Integer, "10"),
             Token::new(TokenType::Eq, "=="),
-            Token::new(TokenType::Number, "10"),
+            Token::new(TokenType::Integer, "10"),
             Token::new(TokenType::Semicolon, ";"),
-            Token::new(TokenType::Number, "10"),
+            Token::new(TokenType::Integer, "10"),
             Token::new(TokenType::NotEq, "!="),
-            Token::new(TokenType::Number, "9"),
+            Token::new(TokenType::Integer, "9"),
             Token::new(TokenType::Semicolon, ";"),
             Token::new(TokenType::EOF, ""),
         ];
