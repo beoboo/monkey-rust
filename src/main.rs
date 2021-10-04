@@ -7,6 +7,8 @@ use crate::repl::Repl;
 mod token;
 mod lexer;
 mod repl;
+mod parser;
+mod ast;
 
 fn main() {
     let username = get_current_username().unwrap();
