@@ -1,4 +1,7 @@
-#[derive(Debug, PartialEq)]
+use core::fmt;
+use std::fmt::Formatter;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     Assign,
     Asterisk,
@@ -29,7 +32,13 @@ pub enum TokenType {
     EOF,
 }
 
-#[derive(Debug, PartialEq)]
+impl fmt::Display for TokenType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+   }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub literal: String,
