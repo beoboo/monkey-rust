@@ -1,10 +1,24 @@
 use std::io::{Stdin, Stdout, Write};
 use crate::lexer::Lexer;
 use crate::token::TokenType;
+use crate::parser::Parser;
 
 pub struct Repl {}
 
 const PROMPT: &str = ">> ";
+const MONKEY_FACE: &str = "            __,__
+   .--.  .-\"     \"-.  .--.
+  / .. \\/  .-. .-.  \\/ .. \\
+ | |  '|  /   Y   \\  |'  | |
+ | \\   \\  \\ 0 | 0 /  /   / |
+  \\ '- ,\\.-\"\"\"\"\"\"\"-./, -' /
+   ''-' /_   ^ ^   _\\ '-''
+       |  \\._   _./  |
+       \\   \\ '~' /   /
+        '._ '-=-' _.'
+           '-----'
+";
+
 
 impl Repl {
     pub fn start(input: Stdin, mut output: Stdout) {
@@ -15,17 +29,28 @@ impl Repl {
             let mut line = String::new();
             input.read_line(&mut line).map_err(|_| { return}).ok();
 
-            let mut lexer = Lexer::new(line.as_str());
+            let lexer = Lexer::new(line.as_str());
+            let mut parser = Parser::new(lexer);
 
-            loop {
-                let token = lexer.next_token();
+            let _program = match parser.parse_program() {
+                Some(program) => program,
+                None => { continue }
+            };
 
-                if token.token_type == TokenType::EOF {
-                    break;
-                }
-
-                println!("{:?}", token);
+            if parser.errors.len() > 0 {
+                Repl::print_parser_errors(parser.errors);
+                continue;
             }
+        }
+    }
+
+    fn print_parser_errors(errors: Vec<String>) {
+        println!("{}", MONKEY_FACE);
+        println!("Woops! We ran into some monkey business here");
+        println!(" parser errors: ");
+
+        for error in errors {
+            println!("\t{}", error);
         }
     }
 }

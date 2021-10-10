@@ -141,32 +141,6 @@ impl Display for BlockStatement {
         Ok(())
     }
 }
-//
-// // Expressions
-//
-// pub struct DummyExpression {}
-//
-// impl Node for DummyExpression {
-//     fn token_literal(&self) -> &str {
-//         "dummy"
-//     }
-//
-//     fn as_any(&self) -> &dyn Any {
-//         self
-//     }
-// }
-//
-// impl Expression for DummyExpression {
-//     fn value(&self) -> String {
-//         "dummy".to_string()
-//     }
-// }
-//
-// impl Display for DummyExpression {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "dummy")
-//     }
-// }
 
 pub struct Identifier {
     pub token: Token,
