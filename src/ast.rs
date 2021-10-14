@@ -2,11 +2,15 @@ use core::fmt;
 use std::any::Any;
 use std::fmt::{Display, Formatter};
 
+use crate::evaluator::Evaluator;
+use crate::object::{Integer, Object};
 use crate::token::Token;
 
 pub trait Node {
     fn token_literal(&self) -> &str;
     fn as_any(&self) -> &dyn Any;
+    fn as_node(&self) -> &dyn Node;
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>>;
 }
 
 pub trait Statement: Node + fmt::Display {}
@@ -30,6 +34,14 @@ impl Node for Program {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        evaluator.eval_statements(&self.statements)
     }
 }
 
@@ -58,6 +70,14 @@ impl Node for LetStatement {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        todo!()
+    }
 }
 
 impl Statement for LetStatement {}
@@ -82,6 +102,14 @@ impl Node for ReturnStatement {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        todo!()
+    }
 }
 
 impl Statement for ReturnStatement {}
@@ -105,6 +133,14 @@ impl Node for ExpressionStatement {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        evaluator.eval(Box::new(self.expression.as_node()))
+    }
 }
 
 impl Statement for ExpressionStatement {}
@@ -127,6 +163,14 @@ impl Node for BlockStatement {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        todo!()
     }
 }
 
@@ -155,6 +199,14 @@ impl Node for Identifier {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        todo!()
+    }
 }
 
 impl Expression for Identifier {
@@ -181,6 +233,14 @@ impl Node for IntegerLiteral {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, _evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        Some(Box::new(Integer { value: self.value }))
     }
 }
 
@@ -209,6 +269,17 @@ impl Node for PrefixExpression {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        match evaluator.eval(Box::new(self.right.as_node())) {
+            Some(right) => evaluator.eval_prefix_expression(&self.operator, right),
+            None => None
+        }
     }
 }
 
@@ -239,6 +310,24 @@ impl Node for InfixExpression {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        let left = match evaluator.eval(Box::new(self.left.as_node())) {
+            Some(left) => left,
+            None => return None
+        };
+
+        let right = match evaluator.eval(Box::new(self.right.as_node())) {
+            Some(right) => right,
+            None => return None
+        };
+
+        evaluator.eval_infix_expression(&self.operator, left, right)
+    }
 }
 
 impl Expression for InfixExpression {
@@ -267,6 +356,14 @@ impl Node for IfExpression {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        todo!()
     }
 }
 
@@ -301,6 +398,14 @@ impl Node for BooleanLiteral {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        evaluator.native_to_bool(self.value)
+    }
 }
 
 impl Expression for BooleanLiteral {
@@ -328,6 +433,14 @@ impl Node for FunctionLiteral {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        todo!()
     }
 }
 
@@ -360,6 +473,14 @@ impl Node for CallExpression {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+        todo!()
     }
 }
 

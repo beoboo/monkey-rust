@@ -1,7 +1,8 @@
 use std::io::{Stdin, Stdout, Write};
 use crate::lexer::Lexer;
-use crate::token::TokenType;
 use crate::parser::Parser;
+use crate::evaluator::Evaluator;
+use crate::ast::Node;
 
 pub struct Repl {}
 
@@ -32,7 +33,7 @@ impl Repl {
             let lexer = Lexer::new(line.as_str());
             let mut parser = Parser::new(lexer);
 
-            let _program = match parser.parse_program() {
+            let program = match parser.parse_program() {
                 Some(program) => program,
                 None => { continue }
             };
@@ -40,6 +41,12 @@ impl Repl {
             if parser.errors.len() > 0 {
                 Repl::print_parser_errors(parser.errors);
                 continue;
+            }
+
+            let evaluator = Evaluator::new();
+            match evaluator.eval(Box::new(program.as_node())) {
+                Some(evaluated) => println!("{}", evaluated.inspect()),
+                None => {}
             }
         }
     }
