@@ -9,6 +9,8 @@ mod lexer;
 mod repl;
 mod parser;
 mod ast;
+mod object;
+mod evaluator;
 
 fn main() {
     let username = get_current_username().unwrap();

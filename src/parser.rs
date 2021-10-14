@@ -22,7 +22,7 @@ pub struct Parser {
     lexer: Lexer,
     cur_token: Token,
     next_token: Token,
-    pub(crate) errors: Vec<String>,
+    pub errors: Vec<String>,
     prefix_fns: HashMap<TokenType, PrefixFn>,
     infix_fns: HashMap<TokenType, InfixFn>,
     precedences: HashMap<TokenType, Precedence>,
@@ -88,7 +88,7 @@ impl Parser {
         self.next_token = self.lexer.next_token();
     }
 
-    pub(crate) fn parse_program(&mut self) -> Option<Program> {
+    pub fn parse_program(&mut self) -> Option<Box<Program>> {
         let mut statements = vec![];
 
         while !self.cur_token_is(TokenType::EOF) {
@@ -102,9 +102,9 @@ impl Parser {
             self.next_token();
         }
 
-        Some(Program {
+        Some(Box::new(Program {
             statements
-        })
+        }))
     }
 
     fn parse_statement(&mut self) -> Option<Box<dyn Statement>> {
@@ -919,7 +919,7 @@ mod tests {
         let program = parser.parse_program().unwrap_or_else(|| panic!("Invalid parsed program"));
         check_parser_errors(&parser);
 
-        program
+        *program
     }
 
     fn assert_integer_literal(expr: &dyn Expression, value: i64) {
