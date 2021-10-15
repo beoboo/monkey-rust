@@ -170,7 +170,7 @@ impl Node for BlockStatement {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        todo!()
+        evaluator.eval_statements(&self.statements)
     }
 }
 
@@ -363,7 +363,7 @@ impl Node for IfExpression {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        todo!()
+        evaluator.eval_if_expression(self)
     }
 }
 
