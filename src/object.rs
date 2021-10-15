@@ -2,9 +2,10 @@ use std::any::Any;
 use std::fmt::Debug;
 use std::ops::Deref;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ObjectType {
     Boolean,
+    Error,
     Integer,
     Null,
     ReturnValue,
@@ -14,11 +15,15 @@ pub const TRUE : Boolean = Boolean{value: true};
 pub const FALSE : Boolean = Boolean{value: false};
 pub const NULL : Null = Null{};
 
+// pub fn convert<'a, T: 'static + Sized>(obj: &'a Box<dyn Object>) -> Option<&'a T> {
+//     (obj as &'a dyn Any).downcast_ref::<T>()
+// }
+
 pub trait Object: Debug {
     fn get_type(&self) -> ObjectType;
     fn inspect(&self) -> String;
+
     fn as_any(&self) -> &dyn Any;
-    fn as_object(&self) -> &dyn Object;
     fn as_boxed_object(&self) -> Box<dyn Object>;
     fn eq(&self, other: &dyn Object) -> bool;
 }
@@ -38,10 +43,6 @@ impl Object for Integer {
     }
 
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_object(&self) -> &dyn Object {
         self
     }
 
@@ -75,10 +76,6 @@ impl Object for Boolean {
         self
     }
 
-    fn as_object(&self) -> &dyn Object {
-        self
-    }
-
     fn as_boxed_object(&self) -> Box<dyn Object> {
         Box::new(self.clone())
     }
@@ -104,10 +101,6 @@ impl Object for Null {
     }
 
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_object(&self) -> &dyn Object {
         self
     }
 
@@ -138,10 +131,6 @@ impl Object for ReturnValue {
         self
     }
 
-    fn as_object(&self) -> &dyn Object {
-        self
-    }
-
     fn as_boxed_object(&self) -> Box<dyn Object> {
         Box::new(ReturnValue{value: self.value.as_boxed_object()})
     }
@@ -151,5 +140,50 @@ impl Object for ReturnValue {
             Some(other) => self.value.eq(other.value.deref()),
             _ => false
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Error {
+    pub message: String
+}
+
+impl Error {
+    pub(crate) fn new(message: String) -> Self {
+        Self {
+            message
+        }
+    }
+}
+
+impl Object for Error {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::Error
+    }
+
+    fn inspect(&self) -> String {
+        format!("Error: {}", self.message)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_boxed_object(&self) -> Box<dyn Object> {
+        Box::new(self.clone())
+    }
+
+    fn eq(&self, other: &dyn Object) -> bool {
+        match other.as_any().downcast_ref::<Error>() {
+            Some(other) => self.message.eq(other.message.deref()),
+            _ => false
+        }
+    }
+}
+
+pub fn is_error(obj: &Option<Box<dyn Object>>) -> bool {
+    match obj {
+        Some(obj) => obj.get_type() == ObjectType::Error,
+        None => true
     }
 }
