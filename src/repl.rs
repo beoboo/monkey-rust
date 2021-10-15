@@ -3,6 +3,7 @@ use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::evaluator::Evaluator;
 use crate::ast::Node;
+use crate::environment::Environment;
 
 pub struct Repl {}
 
@@ -44,7 +45,8 @@ impl Repl {
             }
 
             let evaluator = Evaluator::new();
-            match evaluator.eval(Box::new(program.as_node())) {
+            let mut environment = Environment::new();
+            match evaluator.eval(Box::new(program.as_node()), &mut environment) {
                 Some(evaluated) => println!("{}", evaluated.inspect()),
                 None => {}
             }

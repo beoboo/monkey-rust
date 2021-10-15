@@ -11,6 +11,7 @@ mod parser;
 mod ast;
 mod object;
 mod evaluator;
+mod environment;
 
 fn main() {
     let username = get_current_username().unwrap();
