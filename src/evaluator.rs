@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use crate::ast::{Node, IfExpression, BlockStatement, Program};
 use crate::object::{Boolean, FALSE, Integer, NULL, Object, ObjectType, TRUE, ReturnValue, Error, is_error};
+use crate::environment::Environment;
 
 pub struct Evaluator {}
 
@@ -10,15 +11,18 @@ impl Evaluator {
         Self {}
     }
 
-    pub fn eval(&self, node: Box<&dyn Node>) -> Option<Box<dyn Object>> {
-        node.visit(self)
+    pub fn eval(&self, node: Box<&dyn Node>, env: &mut Environment) -> Option<Box<dyn Object>> {
+        node.visit(self, env)
     }
 
-    pub fn eval_program(&self, program: &Program) -> Option<Box<dyn Object>> {
+    pub fn eval_program(&self, program: &Program, env: &mut Environment) -> Option<Box<dyn Object>> {
         let mut object: Option<Box<dyn Object>> = Some(Box::new(NULL));
 
         for stmt in &program.statements {
-            let obj = self.eval(Box::new(stmt.as_node())).unwrap();
+            let obj = match self.eval(Box::new(stmt.as_node()), env) {
+                Some(obj) => obj,
+                None => continue
+            };
 
             match obj.get_type() {
                 ObjectType::ReturnValue => {
@@ -36,11 +40,11 @@ impl Evaluator {
         object
     }
 
-    pub fn eval_block_statement(&self, block: &BlockStatement) -> Option<Box<dyn Object>> {
+    pub fn eval_block_statement(&self, block: &BlockStatement, env: &mut Environment) -> Option<Box<dyn Object>> {
         let mut object: Option<Box<dyn Object>> = Some(Box::new(NULL));
 
         for stmt in &block.statements {
-            let evaluated = self.eval(Box::new(stmt.as_node()));
+            let evaluated = self.eval(Box::new(stmt.as_node()), env);
 
             match evaluated {
                 Some(obj) => match obj.get_type() {
@@ -77,17 +81,17 @@ impl Evaluator {
         }
     }
 
-    pub fn eval_if_expression(&self, expr: &IfExpression) -> Option<Box<dyn Object>> {
-        let condition = self.eval(Box::new(expr.condition.as_node()));
+    pub fn eval_if_expression(&self, expr: &IfExpression, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let condition = self.eval(Box::new(expr.condition.as_node()), env);
         if is_error(&condition) {
             return condition
         }
 
         if self.is_truthy(condition.unwrap()) {
-            self.eval(Box::new(expr.consequence.as_node()))
+            self.eval(Box::new(expr.consequence.as_node()), env)
         } else {
             match &expr.alternative {
-                Some(alternative) => self.eval(Box::new(alternative.as_node())),
+                Some(alternative) => self.eval(Box::new(alternative.as_node()), env),
                 None => Some(Box::new(NULL))
             }
         }
@@ -324,6 +328,7 @@ if (10 > 1) {
     }
 }
 ", expected: "unknown operator: Boolean + Boolean"},
+            Test{ input: "foobar", expected: "identifier not found: foobar"},
         ];
 
         for test in tests {
@@ -336,15 +341,37 @@ if (10 > 1) {
         }
     }
 
+    #[test]
+    fn eval_let_statement() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: i64,
+        }
+
+        let tests = vec![
+            Test{ input:"let a = 5; a;", expected: 5},
+            // Test{ input:"let a = 5 * 5; a;", expected: 25},
+            // Test{ input:"let a = 5; let b = a; b;", expected: 5},
+            // Test{ input:"let a = 5; let b = a; let c = a + b + 5; c;", expected: 15},
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+
+            assert_integer_object(evaluated, test.expected);
+        }
+    }
+
     fn eval(input: &str) -> Box<dyn Object> {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program().unwrap_or_else(|| panic!("Invalid parsed program"));
         let evaluator = Evaluator::new();
+        let mut environment = Environment::new();
 
-        match evaluator.eval(Box::new(program.as_node())) {
+        match evaluator.eval(Box::new(program.as_node()), &mut environment) {
             Some(obj) => obj,
-            None => panic!("Invalid object")
+            None => panic!("Invalid program: {}", program)
         }
     }
 

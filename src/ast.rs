@@ -3,14 +3,15 @@ use std::any::Any;
 use std::fmt::{Display, Formatter};
 
 use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object, ReturnValue, is_error};
+use crate::object::{Integer, Object, ReturnValue, is_error, Error};
 use crate::token::Token;
+use crate::environment::Environment;
 
 pub trait Node {
     fn token_literal(&self) -> &str;
     fn as_any(&self) -> &dyn Any;
     fn as_node(&self) -> &dyn Node;
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>>;
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>>;
 }
 
 pub trait Statement: Node + fmt::Display {}
@@ -40,8 +41,8 @@ impl Node for Program {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        evaluator.eval_program(self)
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        evaluator.eval_program(self, env)
     }
 }
 
@@ -75,8 +76,17 @@ impl Node for LetStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        todo!()
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let evaluated = evaluator.eval(Box::new(self.value.as_node()), env);
+        if is_error(&evaluated) {
+            return evaluated;
+        }
+
+        let evaluated = evaluated.unwrap();
+
+        env.set(self.name.value.clone(), evaluated);
+
+        None
     }
 }
 
@@ -107,8 +117,8 @@ impl Node for ReturnStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        let evaluated = evaluator.eval(Box::new(self.return_value.as_node()));
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let evaluated = evaluator.eval(Box::new(self.return_value.as_node()), env);
         if is_error(&evaluated) {
             return evaluated;
         }
@@ -143,8 +153,8 @@ impl Node for ExpressionStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        evaluator.eval(Box::new(self.expression.as_node()))
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        evaluator.eval(Box::new(self.expression.as_node()), env)
     }
 }
 
@@ -174,8 +184,8 @@ impl Node for BlockStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        evaluator.eval_block_statement(self)
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        evaluator.eval_block_statement(self, env)
     }
 }
 
@@ -209,8 +219,11 @@ impl Node for Identifier {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        todo!()
+    fn visit(&self, _evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        match env.get(&self.value) {
+            Some(identifier) => Some(identifier.as_boxed_object()),
+            None => Some(Box::new(Error::new(format!("identifier not found: {}", self.value))))
+        }
     }
 }
 
@@ -244,7 +257,7 @@ impl Node for IntegerLiteral {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         Some(Box::new(Integer { value: self.value }))
     }
 }
@@ -280,8 +293,8 @@ impl Node for PrefixExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        let right = evaluator.eval(Box::new(self.right.as_node()));
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let right = evaluator.eval(Box::new(self.right.as_node()), env);
         if is_error(&right) {
             return right;
         }
@@ -322,13 +335,13 @@ impl Node for InfixExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        let left = evaluator.eval(Box::new(self.left.as_node()));
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let left = evaluator.eval(Box::new(self.left.as_node()), env);
         if is_error(&left) {
             return left
         }
 
-        let right = evaluator.eval(Box::new(self.right.as_node()));
+        let right = evaluator.eval(Box::new(self.right.as_node()), env);
         if is_error(&right) {
             return right
         }
@@ -369,8 +382,8 @@ impl Node for IfExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        evaluator.eval_if_expression(self)
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        evaluator.eval_if_expression(self, env)
     }
 }
 
@@ -410,7 +423,7 @@ impl Node for BooleanLiteral {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+    fn visit(&self, evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.native_to_bool(self.value)
     }
 }
@@ -446,7 +459,7 @@ impl Node for FunctionLiteral {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         todo!()
     }
 }
@@ -486,7 +499,7 @@ impl Node for CallExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
+    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         todo!()
     }
 }
