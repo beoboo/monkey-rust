@@ -3,7 +3,7 @@ use std::any::Any;
 use std::fmt::{Display, Formatter};
 
 use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object, ReturnValue};
+use crate::object::{Integer, Object, ReturnValue, is_error};
 use crate::token::Token;
 
 pub trait Node {
@@ -108,10 +108,12 @@ impl Node for ReturnStatement {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        match evaluator.eval(Box::new(self.return_value.as_node())) {
-            Some(value) => Some(Box::new(ReturnValue{value})),
-            None => None
+        let evaluated = evaluator.eval(Box::new(self.return_value.as_node()));
+        if is_error(&evaluated) {
+            return evaluated;
         }
+
+        Some(Box::new(ReturnValue{value: evaluated.unwrap()}))
     }
 }
 
@@ -279,10 +281,12 @@ impl Node for PrefixExpression {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        match evaluator.eval(Box::new(self.right.as_node())) {
-            Some(right) => evaluator.eval_prefix_expression(&self.operator, right),
-            None => None
+        let right = evaluator.eval(Box::new(self.right.as_node()));
+        if is_error(&right) {
+            return right;
         }
+
+        evaluator.eval_prefix_expression(&self.operator, right.unwrap())
     }
 }
 
@@ -319,17 +323,17 @@ impl Node for InfixExpression {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        let left = match evaluator.eval(Box::new(self.left.as_node())) {
-            Some(left) => left,
-            None => return None
-        };
+        let left = evaluator.eval(Box::new(self.left.as_node()));
+        if is_error(&left) {
+            return left
+        }
 
-        let right = match evaluator.eval(Box::new(self.right.as_node())) {
-            Some(right) => right,
-            None => return None
-        };
+        let right = evaluator.eval(Box::new(self.right.as_node()));
+        if is_error(&right) {
+            return right
+        }
 
-        evaluator.eval_infix_expression(&self.operator, left, right)
+        evaluator.eval_infix_expression(&self.operator, left.unwrap(), right.unwrap())
     }
 }
 

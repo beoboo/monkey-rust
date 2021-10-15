@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::ast::{Node, IfExpression, BlockStatement, Program};
-use crate::object::{Boolean, FALSE, Integer, NULL, Object, ObjectType, TRUE, ReturnValue};
+use crate::object::{Boolean, FALSE, Integer, NULL, Object, ObjectType, TRUE, ReturnValue, Error, is_error};
 
 pub struct Evaluator {}
 
@@ -20,12 +20,16 @@ impl Evaluator {
         for stmt in &program.statements {
             let obj = self.eval(Box::new(stmt.as_node())).unwrap();
 
-            match obj.as_any().downcast_ref::<ReturnValue>() {
-                Some(return_value) => {
+            match obj.get_type() {
+                ObjectType::ReturnValue => {
+                    let return_value = obj.as_any().downcast_ref::<ReturnValue>().unwrap();
                     let val = &return_value.value;
                     return Some(val.as_boxed_object())
-                },
-                None => object = Some(obj)
+                }
+                ObjectType::Error => {
+                    return Some(obj)
+                }
+                _ => object = Some(obj)
             }
         }
 
@@ -39,10 +43,9 @@ impl Evaluator {
             let evaluated = self.eval(Box::new(stmt.as_node()));
 
             match evaluated {
-                Some(obj) => if obj.get_type() == ObjectType::ReturnValue {
-                    return Some(obj.as_boxed_object())
-                } else {
-                    object = Some(obj.as_boxed_object())
+                Some(obj) => match obj.get_type() {
+                    ObjectType::ReturnValue | ObjectType::Error => return Some(obj.as_boxed_object()),
+                    _ => object = Some(obj.as_boxed_object())
                 }
                 None => {}
             }
@@ -55,11 +58,14 @@ impl Evaluator {
         match operator {
             "!" => self.eval_bang_operator_expression(right),
             "-" => self.eval_minus_prefix_operator_expression(right),
-            _ => None
+            _ => Some(Box::new(Error::new(format!("unknown operator: {}{:?}", operator, right.get_type()))))
         }
     }
 
     pub fn eval_infix_expression(&self, operator: &str, left: Box<dyn Object>, right: Box<dyn Object>) -> Option<Box<dyn Object>> {
+        if left.get_type() != right.get_type() {
+            return Some(Box::new(Error::new(format!("type mismatch: {:?} {} {:?}", left.get_type(), operator, right.get_type()))))
+        }
         if left.get_type() == ObjectType::Integer && right.get_type() == ObjectType::Integer {
             return self.eval_integer_infix_expression(operator, left, right);
         }
@@ -67,14 +73,17 @@ impl Evaluator {
         match operator {
             "==" => self.native_to_bool(left.eq(right.deref())),
             "!=" => self.native_to_bool(!left.eq(right.deref())),
-            _ => None
+            _ => Some(Box::new(Error::new(format!("unknown operator: {:?} {} {:?}", left.get_type(), operator, right.get_type()))))
         }
     }
 
     pub fn eval_if_expression(&self, expr: &IfExpression) -> Option<Box<dyn Object>> {
-        let condition = self.eval(Box::new(expr.condition.as_node())).unwrap();
+        let condition = self.eval(Box::new(expr.condition.as_node()));
+        if is_error(&condition) {
+            return condition
+        }
 
-        if self.is_truthy(condition) {
+        if self.is_truthy(condition.unwrap()) {
             self.eval(Box::new(expr.consequence.as_node()))
         } else {
             match &expr.alternative {
@@ -103,7 +112,7 @@ impl Evaluator {
                 let value = right.as_any().downcast_ref::<Integer>().unwrap().value;
                 Some(Box::new(Integer { value: -value }))
             }
-            _ => None
+            _ => Some(Box::new(Error::new(format!("unknown operator: -{:?}", right.get_type()))))
         }
     }
 
@@ -120,7 +129,7 @@ impl Evaluator {
             ">" => self.native_to_bool(left.value > right.value),
             "==" => self.native_to_bool(left.value == right.value),
             "!=" => self.native_to_bool(left.value != right.value),
-            _ => None
+            _ => Some(Box::new(Error::new(format!("unknown operator: {:?} {} {:?}", left.get_type(), operator, right.get_type()))))
         }
     }
 
@@ -143,7 +152,7 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::lexer::Lexer;
-    use crate::object::{Boolean, Integer, Object, Null};
+    use crate::object::{Boolean, Integer, Object, Null, Error};
     use crate::parser::Parser;
 
     use super::*;
@@ -291,6 +300,39 @@ return 1;
             let evaluated = eval(test.input);
 
             assert_integer_object(evaluated, test.expected);
+        }
+    }
+
+    #[test]
+    fn eval_error_handling() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: &'a str,
+        }
+
+        let tests = vec![
+            Test{ input: "5 + true;", expected: "type mismatch: Integer + Boolean"},
+            Test{ input: "5 + true; 5;", expected: "type mismatch: Integer + Boolean"},
+            Test{ input: "-true", expected: "unknown operator: -Boolean"},
+            Test{ input: "true + true;", expected: "unknown operator: Boolean + Boolean"},
+            Test{ input: "5; true + false; 5;", expected: "unknown operator: Boolean + Boolean"},
+            Test{ input: "if (10 > 1) { true + false; }", expected: "unknown operator: Boolean + Boolean"},
+            Test{ input: "
+if (10 > 1) {
+    if (10 > 1) {
+        true + false;
+    }
+}
+", expected: "unknown operator: Boolean + Boolean"},
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+
+            assert_eq!(evaluated.get_type(), ObjectType::Error);
+
+            let error_obj = evaluated.as_any().downcast_ref::<Error>().unwrap();
+            assert_eq!(error_obj.message, test.expected);
         }
     }
 
