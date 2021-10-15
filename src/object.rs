@@ -1,11 +1,13 @@
 use std::any::Any;
 use std::fmt::Debug;
+use std::ops::Deref;
 
 #[derive(PartialEq)]
 pub enum ObjectType {
     Boolean,
     Integer,
     Null,
+    ReturnValue,
 }
 
 pub const TRUE : Boolean = Boolean{value: true};
@@ -16,10 +18,12 @@ pub trait Object: Debug {
     fn get_type(&self) -> ObjectType;
     fn inspect(&self) -> String;
     fn as_any(&self) -> &dyn Any;
+    fn as_object(&self) -> &dyn Object;
+    fn as_boxed_object(&self) -> Box<dyn Object>;
     fn eq(&self, other: &dyn Object) -> bool;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Integer {
     pub value: i64,
 }
@@ -37,6 +41,14 @@ impl Object for Integer {
         self
     }
 
+    fn as_object(&self) -> &dyn Object {
+        self
+    }
+
+    fn as_boxed_object(&self) -> Box<dyn Object> {
+        Box::new(self.clone())
+    }
+
     fn eq(&self, other: &dyn Object) -> bool {
         match other.as_any().downcast_ref::<Integer>() {
             Some(other) => self.value == other.value,
@@ -45,7 +57,7 @@ impl Object for Integer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Boolean {
     pub value: bool,
 }
@@ -63,6 +75,14 @@ impl Object for Boolean {
         self
     }
 
+    fn as_object(&self) -> &dyn Object {
+        self
+    }
+
+    fn as_boxed_object(&self) -> Box<dyn Object> {
+        Box::new(self.clone())
+    }
+
     fn eq(&self, other: &dyn Object) -> bool {
         match other.as_any().downcast_ref::<Boolean>() {
             Some(other) => self.value == other.value,
@@ -71,7 +91,7 @@ impl Object for Boolean {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Null {}
 
 impl Object for Null {
@@ -87,7 +107,49 @@ impl Object for Null {
         self
     }
 
+    fn as_object(&self) -> &dyn Object {
+        self
+    }
+
+    fn as_boxed_object(&self) -> Box<dyn Object> {
+        Box::new(self.clone())
+    }
+
     fn eq(&self, other: &dyn Object) -> bool {
         other.get_type() == ObjectType::Null
+    }
+}
+
+#[derive(Debug)]
+pub struct ReturnValue {
+    pub value: Box<dyn Object>
+}
+
+impl Object for ReturnValue {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::ReturnValue
+    }
+
+    fn inspect(&self) -> String {
+        self.value.inspect()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_object(&self) -> &dyn Object {
+        self
+    }
+
+    fn as_boxed_object(&self) -> Box<dyn Object> {
+        Box::new(ReturnValue{value: self.value.as_boxed_object()})
+    }
+
+    fn eq(&self, other: &dyn Object) -> bool {
+        match other.as_any().downcast_ref::<ReturnValue>() {
+            Some(other) => self.value.eq(other.value.deref()),
+            _ => false
+        }
     }
 }

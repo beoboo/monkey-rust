@@ -3,7 +3,7 @@ use std::any::Any;
 use std::fmt::{Display, Formatter};
 
 use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object};
+use crate::object::{Integer, Object, ReturnValue};
 use crate::token::Token;
 
 pub trait Node {
@@ -41,7 +41,7 @@ impl Node for Program {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        evaluator.eval_statements(&self.statements)
+        evaluator.eval_program(self)
     }
 }
 
@@ -108,7 +108,10 @@ impl Node for ReturnStatement {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        todo!()
+        match evaluator.eval(Box::new(self.return_value.as_node())) {
+            Some(value) => Some(Box::new(ReturnValue{value})),
+            None => None
+        }
     }
 }
 
@@ -170,7 +173,7 @@ impl Node for BlockStatement {
     }
 
     fn visit(&self, evaluator: &Evaluator) -> Option<Box<dyn Object>> {
-        evaluator.eval_statements(&self.statements)
+        evaluator.eval_block_statement(self)
     }
 }
 

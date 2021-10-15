@@ -1,8 +1,7 @@
 use std::ops::Deref;
 
-use crate::ast::{Node, Statement, IfExpression};
-use crate::object::{Boolean, FALSE, Integer, NULL, Object, ObjectType, TRUE};
-use crate::object::ObjectType::Null;
+use crate::ast::{Node, IfExpression, BlockStatement, Program};
+use crate::object::{Boolean, FALSE, Integer, NULL, Object, ObjectType, TRUE, ReturnValue};
 
 pub struct Evaluator {}
 
@@ -15,11 +14,38 @@ impl Evaluator {
         node.visit(self)
     }
 
-    pub fn eval_statements(&self, statements: &Vec<Box<dyn Statement>>) -> Option<Box<dyn Object>> {
+    pub fn eval_program(&self, program: &Program) -> Option<Box<dyn Object>> {
         let mut object: Option<Box<dyn Object>> = Some(Box::new(NULL));
 
-        for stmt in statements {
-            object = self.eval(Box::new(stmt.as_node()));
+        for stmt in &program.statements {
+            let obj = self.eval(Box::new(stmt.as_node())).unwrap();
+
+            match obj.as_any().downcast_ref::<ReturnValue>() {
+                Some(return_value) => {
+                    let val = &return_value.value;
+                    return Some(val.as_boxed_object())
+                },
+                None => object = Some(obj)
+            }
+        }
+
+        object
+    }
+
+    pub fn eval_block_statement(&self, block: &BlockStatement) -> Option<Box<dyn Object>> {
+        let mut object: Option<Box<dyn Object>> = Some(Box::new(NULL));
+
+        for stmt in &block.statements {
+            let evaluated = self.eval(Box::new(stmt.as_node()));
+
+            match evaluated {
+                Some(obj) => if obj.get_type() == ObjectType::ReturnValue {
+                    return Some(obj.as_boxed_object())
+                } else {
+                    object = Some(obj.as_boxed_object())
+                }
+                None => {}
+            }
         }
 
         object
@@ -46,15 +72,11 @@ impl Evaluator {
     }
 
     pub fn eval_if_expression(&self, expr: &IfExpression) -> Option<Box<dyn Object>> {
-        println!("Here");
         let condition = self.eval(Box::new(expr.condition.as_node())).unwrap();
 
-        println!("Here");
         if self.is_truthy(condition) {
-            println!("Here");
             self.eval(Box::new(expr.consequence.as_node()))
         } else {
-            println!("Here");
             match &expr.alternative {
                 Some(alternative) => self.eval(Box::new(alternative.as_node())),
                 None => Some(Box::new(NULL))
@@ -188,7 +210,6 @@ mod tests {
         ];
 
         for test in tests {
-            println!("Testing {}", test.input);
             let evaluated = eval(test.input);
 
             assert_boolean_object(evaluated, test.expected);
@@ -236,12 +257,40 @@ mod tests {
         ];
 
         for test in tests {
-            println!("{}", test.input);
             let evaluated = eval(test.input);
             match test.expected {
                 Some(n) => assert_integer_object(evaluated, n),
                 None => assert_null_object(evaluated)
             }
+        }
+    }
+
+    #[test]
+    fn eval_return_statements() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: i64,
+        }
+
+        let tests = vec![
+            Test { input: "return 10;", expected: 10 },
+            Test { input: "return 10; 9;", expected: 10 },
+            Test { input: "return 2 * 5; 9;", expected: 10 },
+            Test { input: "9; return 2 * 5; 9;", expected: 10 },
+            Test { input: "
+if (10 > 1) {
+ if (10 > 1) {
+   return 10;
+ }
+}
+return 1;
+            ", expected: 10}
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+
+            assert_integer_object(evaluated, test.expected);
         }
     }
 
