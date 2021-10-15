@@ -1,7 +1,8 @@
 use std::ops::Deref;
 
-use crate::ast::{Node, Statement};
+use crate::ast::{Node, Statement, IfExpression};
 use crate::object::{Boolean, FALSE, Integer, NULL, Object, ObjectType, TRUE};
+use crate::object::ObjectType::Null;
 
 pub struct Evaluator {}
 
@@ -12,7 +13,6 @@ impl Evaluator {
 
     pub fn eval(&self, node: Box<&dyn Node>) -> Option<Box<dyn Object>> {
         node.visit(self)
-        // Box::new(Null{})
     }
 
     pub fn eval_statements(&self, statements: &Vec<Box<dyn Statement>>) -> Option<Box<dyn Object>> {
@@ -42,6 +42,23 @@ impl Evaluator {
             "==" => self.native_to_bool(left.eq(right.deref())),
             "!=" => self.native_to_bool(!left.eq(right.deref())),
             _ => None
+        }
+    }
+
+    pub fn eval_if_expression(&self, expr: &IfExpression) -> Option<Box<dyn Object>> {
+        println!("Here");
+        let condition = self.eval(Box::new(expr.condition.as_node())).unwrap();
+
+        println!("Here");
+        if self.is_truthy(condition) {
+            println!("Here");
+            self.eval(Box::new(expr.consequence.as_node()))
+        } else {
+            println!("Here");
+            match &expr.alternative {
+                Some(alternative) => self.eval(Box::new(alternative.as_node())),
+                None => Some(Box::new(NULL))
+            }
         }
     }
 
@@ -91,12 +108,20 @@ impl Evaluator {
             false => Some(Box::new(FALSE))
         }
     }
+
+    fn is_truthy(&self, obj: Box<dyn Object>) -> bool {
+        match obj.get_type() {
+            ObjectType::Boolean => obj.as_any().downcast_ref::<Boolean>().unwrap().value,
+            ObjectType::Null => false,
+            _ => true
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::lexer::Lexer;
-    use crate::object::{Boolean, Integer, Object};
+    use crate::object::{Boolean, Integer, Object, Null};
     use crate::parser::Parser;
 
     use super::*;
@@ -193,6 +218,33 @@ mod tests {
         }
     }
 
+    #[test]
+    fn eval_if_expression() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: Option<i64>,
+        }
+
+        let tests = vec![
+            Test { input: "if (true) { 10 }", expected: Some(10) },
+            Test { input: "if (false) { 10 }", expected: None },
+            Test { input: "if (1) { 10 }", expected: Some(10) },
+            Test { input: "if (1 < 2) { 10 }", expected: Some(10) },
+            Test { input: "if (1 > 2) { 10 }", expected: None },
+            Test { input: "if (1 > 2) { 10 } else { 20 }", expected: Some(20) },
+            Test { input: "if (1 < 2) { 10 } else { 20 }", expected: Some(10) },
+        ];
+
+        for test in tests {
+            println!("{}", test.input);
+            let evaluated = eval(test.input);
+            match test.expected {
+                Some(n) => assert_integer_object(evaluated, n),
+                None => assert_null_object(evaluated)
+            }
+        }
+    }
+
     fn eval(input: &str) -> Box<dyn Object> {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
@@ -217,5 +269,10 @@ mod tests {
             .unwrap_or_else(|| { panic!("Not a boolean") });
 
         assert_eq!(result.value, expected);
+    }
+
+    fn assert_null_object(evaluated: Box<dyn Object>) {
+        evaluated.as_any().downcast_ref::<Null>()
+            .unwrap_or_else(|| { panic!("Not a null") });
     }
 }
