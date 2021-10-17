@@ -1,25 +1,73 @@
-use core::fmt;
 use std::any::Any;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Debug};
 
 use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object, ReturnValue, is_error, Error};
+use crate::object::{Integer, Object, ReturnValue, is_error, Error, Function};
 use crate::token::Token;
 use crate::environment::Environment;
 
-pub trait Node {
+pub trait BaseNode {
+    fn clone_node(&self) -> Box<dyn Node>;
+}
+
+pub trait BaseExpression {
+    fn clone_expression(&self) -> Box<dyn Expression>;
+}
+
+pub trait BaseStatement {
+    fn clone_statement(&self) -> Box<dyn Statement>;
+}
+
+impl<T: 'static + Node + Clone> BaseNode for T {
+    fn clone_node(&self) -> Box<dyn Node> {
+        Box::new(self.clone())
+    }
+}
+
+impl<T: 'static + Expression + Clone> BaseExpression for T {
+    fn clone_expression(&self) -> Box<dyn Expression> {
+        Box::new(self.clone())
+    }
+}
+
+impl<T: 'static + Statement + Clone> BaseStatement for T {
+    fn clone_statement(&self) -> Box<dyn Statement> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for Box<dyn Node> {
+    fn clone(&self) -> Box<dyn Node> {
+        self.clone_node()
+    }
+}
+
+impl Clone for Box<dyn Expression> {
+    fn clone(&self) -> Box<dyn Expression> {
+        self.clone_expression()
+    }
+}
+
+impl Clone for Box<dyn Statement> {
+    fn clone(&self) -> Box<dyn Statement> {
+        self.clone_statement()
+    }
+}
+
+pub trait Node : BaseNode + Debug + Display {
     fn token_literal(&self) -> &str;
     fn as_any(&self) -> &dyn Any;
     fn as_node(&self) -> &dyn Node;
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>>;
 }
 
-pub trait Statement: Node + fmt::Display {}
+pub trait Statement: BaseStatement + Node {}
 
-pub trait Expression: Node + fmt::Display {
+pub trait Expression: BaseExpression + Node {
     fn value(&self) -> String;
 }
 
+#[derive(Clone, Debug)]
 pub struct Program {
     pub statements: Vec<Box<dyn Statement>>,
 }
@@ -57,6 +105,7 @@ impl Display for Program {
 }
 
 // Statements
+#[derive(Clone, Debug)]
 pub struct LetStatement {
     pub token: Token,
     pub name: Identifier,
@@ -99,6 +148,7 @@ impl Display for LetStatement {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ReturnStatement {
     pub token: Token,
     pub return_value: Box<dyn Expression>,
@@ -135,6 +185,7 @@ impl Display for ReturnStatement {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ExpressionStatement {
     pub token: Token,
     pub expression: Box<dyn Expression>,
@@ -166,6 +217,7 @@ impl Display for ExpressionStatement {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct BlockStatement {
     pub token: Token,
     pub statements: Vec<Box<dyn Statement>>,
@@ -201,6 +253,7 @@ impl Display for BlockStatement {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Identifier {
     pub token: Token,
     pub value: String,
@@ -221,7 +274,7 @@ impl Node for Identifier {
 
     fn visit(&self, _evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         match env.get(&self.value) {
-            Some(identifier) => Some(identifier.as_boxed_object()),
+            Some(identifier) => Some(identifier.clone()),
             None => Some(Box::new(Error::new(format!("identifier not found: {}", self.value))))
         }
     }
@@ -239,6 +292,7 @@ impl Display for Identifier {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct IntegerLiteral {
     pub token: Token,
     pub value: i64,
@@ -274,6 +328,7 @@ impl Display for IntegerLiteral {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct PrefixExpression {
     pub token: Token,
     pub operator: String,
@@ -315,6 +370,7 @@ impl Display for PrefixExpression {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct InfixExpression {
     pub token: Token,
     pub left: Box<dyn Expression>,
@@ -362,6 +418,7 @@ impl Display for InfixExpression {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct IfExpression {
     pub token: Token,
     pub condition: Box<dyn Expression>,
@@ -404,7 +461,7 @@ impl Display for IfExpression {
     }
 }
 
-
+#[derive(Clone, Debug)]
 pub struct BooleanLiteral {
     pub token: Token,
     pub value: bool,
@@ -440,6 +497,7 @@ impl Display for BooleanLiteral {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct FunctionLiteral {
     pub token: Token,
     pub parameters: Vec<Identifier>,
@@ -459,8 +517,8 @@ impl Node for FunctionLiteral {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
-        todo!()
+    fn visit(&self, _evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        Some(Box::new(Function{parameters: self.parameters.clone(), body: self.body.clone(), env: env.clone() }))
     }
 }
 
@@ -480,6 +538,7 @@ impl Display for FunctionLiteral {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct CallExpression {
     pub token: Token,
     pub function: Box<dyn Expression>,
@@ -499,8 +558,23 @@ impl Node for CallExpression {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
-        todo!()
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let function = evaluator.eval(Box::new(self.function.as_node()), env);
+        if is_error(&function) {
+            return function
+        }
+
+        let function = function.unwrap();
+
+        let args = evaluator.eval_expressions(self.arguments.clone(), env);
+        if args.len() == 1 {
+            let arg = args[0].clone();
+            if is_error(&Some(arg.clone())) {
+                return Some(arg)
+            }
+        }
+
+        evaluator.eval_function_call(function, args)
     }
 }
 
