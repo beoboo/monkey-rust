@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
-use crate::ast::{Node, IfExpression, BlockStatement, Program};
-use crate::object::{Boolean, FALSE, Integer, NULL, Object, ObjectType, TRUE, ReturnValue, Error, is_error};
+use crate::ast::{BlockStatement, IfExpression, Node, Program, Expression};
 use crate::environment::Environment;
+use crate::object::{Boolean, Error, FALSE, Integer, is_error, NULL, Object, ObjectType, ReturnValue, TRUE, Function};
 
 pub struct Evaluator {}
 
@@ -28,10 +28,10 @@ impl Evaluator {
                 ObjectType::ReturnValue => {
                     let return_value = obj.as_any().downcast_ref::<ReturnValue>().unwrap();
                     let val = &return_value.value;
-                    return Some(val.as_boxed_object())
+                    return Some(val.clone());
                 }
                 ObjectType::Error => {
-                    return Some(obj)
+                    return Some(obj);
                 }
                 _ => object = Some(obj)
             }
@@ -48,8 +48,8 @@ impl Evaluator {
 
             match evaluated {
                 Some(obj) => match obj.get_type() {
-                    ObjectType::ReturnValue | ObjectType::Error => return Some(obj.as_boxed_object()),
-                    _ => object = Some(obj.as_boxed_object())
+                    ObjectType::ReturnValue | ObjectType::Error => return Some(obj.clone()),
+                    _ => object = Some(obj.clone())
                 }
                 None => {}
             }
@@ -68,7 +68,7 @@ impl Evaluator {
 
     pub fn eval_infix_expression(&self, operator: &str, left: Box<dyn Object>, right: Box<dyn Object>) -> Option<Box<dyn Object>> {
         if left.get_type() != right.get_type() {
-            return Some(Box::new(Error::new(format!("type mismatch: {:?} {} {:?}", left.get_type(), operator, right.get_type()))))
+            return Some(Box::new(Error::new(format!("type mismatch: {:?} {} {:?}", left.get_type(), operator, right.get_type()))));
         }
         if left.get_type() == ObjectType::Integer && right.get_type() == ObjectType::Integer {
             return self.eval_integer_infix_expression(operator, left, right);
@@ -84,7 +84,7 @@ impl Evaluator {
     pub fn eval_if_expression(&self, expr: &IfExpression, env: &mut Environment) -> Option<Box<dyn Object>> {
         let condition = self.eval(Box::new(expr.condition.as_node()), env);
         if is_error(&condition) {
-            return condition
+            return condition;
         }
 
         if self.is_truthy(condition.unwrap()) {
@@ -137,6 +137,52 @@ impl Evaluator {
         }
     }
 
+    pub fn eval_expressions(&self, exprs: Vec<Box<dyn Expression>>, env: &mut Environment) -> Vec<Box<dyn Object>> {
+        let mut result:Vec<Box<dyn Object>> = vec![];
+        for e in exprs {
+            let evaluated = self.eval(Box::new(e.as_node()), env);
+            if is_error(&evaluated) {
+                return vec![evaluated.unwrap()]
+            }
+
+            match evaluated {
+                Some(expr) => result.push(expr),
+                None => {}
+            }
+        }
+
+        result
+    }
+
+    pub fn eval_function_call(&self, function: Box<dyn Object>, args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
+        let function = match function.as_any().downcast_ref::<Function>() {
+            Some(function) => function,
+            None => return Some(Box::new(Error::new(format!("not a function: {:?}", function.get_type()))))
+        };
+
+        let mut extended_env = self.extend_function_env(function, args);
+        let evaluated = self.eval(Box::new(function.body.as_node()), &mut extended_env)?;
+
+        self.unwrap_return_value(evaluated)
+    }
+
+    fn extend_function_env(&self, function: &Function, args: Vec<Box<dyn Object>>) -> Environment {
+        let mut env = Environment::enclose(function.env.clone());
+
+        for (idx, param) in function.parameters.iter().enumerate() {
+            env.set(param.value.clone(), args[idx].clone());
+        }
+
+        env
+    }
+
+    fn unwrap_return_value(&self, object: Box<dyn Object>) -> Option<Box<dyn Object>>  {
+        match object.as_any().downcast_ref::<ReturnValue>() {
+            Some(return_value) => Some(return_value.value.clone()),
+            None => Some(object)
+        }
+    }
+
     pub fn native_to_bool(&self, input: bool) -> Option<Box<dyn Object>> {
         match input {
             true => Some(Box::new(TRUE)),
@@ -156,7 +202,7 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::lexer::Lexer;
-    use crate::object::{Boolean, Integer, Object, Null, Error};
+    use crate::object::{Boolean, Error, Function, Integer, Null, Object};
     use crate::parser::Parser;
 
     use super::*;
@@ -290,14 +336,17 @@ mod tests {
             Test { input: "return 10; 9;", expected: 10 },
             Test { input: "return 2 * 5; 9;", expected: 10 },
             Test { input: "9; return 2 * 5; 9;", expected: 10 },
-            Test { input: "
+            Test {
+                input: "
 if (10 > 1) {
  if (10 > 1) {
    return 10;
  }
 }
 return 1;
-            ", expected: 10}
+            ",
+                expected: 10,
+            },
         ];
 
         for test in tests {
@@ -315,20 +364,23 @@ return 1;
         }
 
         let tests = vec![
-            Test{ input: "5 + true;", expected: "type mismatch: Integer + Boolean"},
-            Test{ input: "5 + true; 5;", expected: "type mismatch: Integer + Boolean"},
-            Test{ input: "-true", expected: "unknown operator: -Boolean"},
-            Test{ input: "true + true;", expected: "unknown operator: Boolean + Boolean"},
-            Test{ input: "5; true + false; 5;", expected: "unknown operator: Boolean + Boolean"},
-            Test{ input: "if (10 > 1) { true + false; }", expected: "unknown operator: Boolean + Boolean"},
-            Test{ input: "
+            Test { input: "5 + true;", expected: "type mismatch: Integer + Boolean" },
+            Test { input: "5 + true; 5;", expected: "type mismatch: Integer + Boolean" },
+            Test { input: "-true", expected: "unknown operator: -Boolean" },
+            Test { input: "true + true;", expected: "unknown operator: Boolean + Boolean" },
+            Test { input: "5; true + false; 5;", expected: "unknown operator: Boolean + Boolean" },
+            Test { input: "if (10 > 1) { true + false; }", expected: "unknown operator: Boolean + Boolean" },
+            Test {
+                input: "
 if (10 > 1) {
     if (10 > 1) {
         true + false;
     }
 }
-", expected: "unknown operator: Boolean + Boolean"},
-            Test{ input: "foobar", expected: "identifier not found: foobar"},
+",
+                expected: "unknown operator: Boolean + Boolean",
+            },
+            Test { input: "foobar", expected: "identifier not found: foobar" },
         ];
 
         for test in tests {
@@ -349,10 +401,10 @@ if (10 > 1) {
         }
 
         let tests = vec![
-            Test{ input:"let a = 5; a;", expected: 5},
-            // Test{ input:"let a = 5 * 5; a;", expected: 25},
-            // Test{ input:"let a = 5; let b = a; b;", expected: 5},
-            // Test{ input:"let a = 5; let b = a; let c = a + b + 5; c;", expected: 15},
+            Test { input: "let a = 5; a;", expected: 5 },
+            Test { input: "let a = 5 * 5; a;", expected: 25 },
+            Test { input: "let a = 5; let b = a; b;", expected: 5 },
+            Test { input: "let a = 5; let b = a; let c = a + b + 5; c;", expected: 15 },
         ];
 
         for test in tests {
@@ -362,10 +414,58 @@ if (10 > 1) {
         }
     }
 
+    #[test]
+    fn eval_function() {
+        let input = "fn(x) { x + 2; }";
+        let evaluated = eval(input);
+        let function = evaluated.as_any().downcast_ref::<Function>().unwrap_or_else(|| panic!("Invalid function"));
+
+        assert_eq!(function.parameters.len(), 1);
+        assert_eq!(function.parameters[0].to_string(), "x");
+        assert_eq!(function.body.to_string(), "(x + 2)")
+    }
+
+    #[test]
+    fn eval_function_call() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: i64,
+        }
+
+        let tests = vec![
+            Test { input: "let identity = fn(x) { x; }; identity(5);", expected: 5 },
+            Test { input: "let identity = fn(x) { return x; }; identity(5);", expected: 5 },
+            Test { input: "let double = fn(x) { x * 2; }; double(5);", expected: 10 },
+            Test { input: "let add = fn(x, y) { x + y; }; add(5, 5);", expected: 10 },
+            Test { input: "let add = fn(x, y) { x + y; }; add(5 + 5, add(5, 5));", expected: 20 },
+            Test { input: "fn(x) { x; }(5)", expected: 5 },
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+
+            assert_integer_object(evaluated, test.expected);
+        }
+    }
+
+    #[test]
+    fn eval_closure() {
+        let input = "
+let newAdder = fn(x) {
+    fn(y) { x + y };
+};
+
+let addTwo = newAdder(2);
+addTwo(2);
+";
+
+        assert_integer_object(eval(input), 4);
+    }
+
     fn eval(input: &str) -> Box<dyn Object> {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
-        let program = parser.parse_program().unwrap_or_else(|| panic!("Invalid parsed program"));
+        let program = parser.parse_program().unwrap_or_else(|| panic!("Invalid program"));
         let evaluator = Evaluator::new();
         let mut environment = Environment::new();
 
