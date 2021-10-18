@@ -27,6 +27,7 @@ pub enum TokenType {
     RParen,
     Return,
     Slash,
+    String,
     True,
     Semicolon,
     EOF,

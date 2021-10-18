@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use crate::ast::{BlockStatement, IfExpression, Node, Program, Expression};
 use crate::environment::Environment;
-use crate::object::{Boolean, Error, FALSE, Integer, is_error, NULL, Object, ObjectType, ReturnValue, TRUE, Function};
+use crate::object::{Boolean, Error, FALSE, Integer, is_error, NULL, Object, ObjectType, ReturnValue, TRUE, Function, StringE};
 
 pub struct Evaluator {}
 
@@ -73,6 +73,9 @@ impl Evaluator {
         if left.get_type() == ObjectType::Integer && right.get_type() == ObjectType::Integer {
             return self.eval_integer_infix_expression(operator, left, right);
         }
+        if left.get_type() == ObjectType::String && right.get_type() == ObjectType::String {
+            return self.eval_string_infix_expression(operator, left, right);
+        }
 
         match operator {
             "==" => self.native_to_bool(left.eq(right.deref())),
@@ -135,6 +138,17 @@ impl Evaluator {
             "!=" => self.native_to_bool(left.value != right.value),
             _ => Some(Box::new(Error::new(format!("unknown operator: {:?} {} {:?}", left.get_type(), operator, right.get_type()))))
         }
+    }
+
+    fn eval_string_infix_expression(&self, operator: &str, left: Box<dyn Object>, right: Box<dyn Object>) -> Option<Box<dyn Object>> {
+        if operator != "+" {
+            return Some(Box::new(Error::new(format!("unknown operator: {:?} {} {:?}", left.get_type(), operator, right.get_type()))))
+        }
+
+        let left = left.as_any().downcast_ref::<StringE>().unwrap();
+        let right = right.as_any().downcast_ref::<StringE>().unwrap();
+
+        Some(Box::new(StringE{value: left.value.to_owned() + right.value.as_str()}))
     }
 
     pub fn eval_expressions(&self, exprs: Vec<Box<dyn Expression>>, env: &mut Environment) -> Vec<Box<dyn Object>> {
@@ -202,7 +216,7 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::lexer::Lexer;
-    use crate::object::{Boolean, Error, Function, Integer, Null, Object};
+    use crate::object::{Boolean, Error, Function, Integer, Null, Object, StringE};
     use crate::parser::Parser;
 
     use super::*;
@@ -273,6 +287,28 @@ mod tests {
 
             assert_boolean_object(evaluated, test.expected);
         }
+    }
+
+    #[test]
+    fn eval_string_expression() {
+        let input = "\"Hello World!\"";
+
+        let evaluated = eval(input);
+        let string = evaluated.as_any().downcast_ref::<StringE>()
+            .unwrap_or_else(|| panic!("Not a string"));
+
+        assert_eq!(string.value, "Hello World!");
+    }
+
+    #[test]
+    fn eval_string_concatenation() {
+        let input = "\"Hello\" + \" \" + \"World!\"";
+
+        let evaluated = eval(input);
+        let string = evaluated.as_any().downcast_ref::<StringE>()
+            .unwrap_or_else(|| panic!("Not a string"));
+
+        assert_eq!(string.value, "Hello World!");
     }
 
     #[test]
@@ -381,6 +417,7 @@ if (10 > 1) {
                 expected: "unknown operator: Boolean + Boolean",
             },
             Test { input: "foobar", expected: "identifier not found: foobar" },
+            Test { input: "\"hello\" - \"world\"", expected: "unknown operator: String - String" },
         ];
 
         for test in tests {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BlockStatement, BooleanLiteral, CallExpression, Expression, ExpressionStatement, FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement, Statement};
+use crate::ast::{BlockStatement, BooleanLiteral, CallExpression, Expression, ExpressionStatement, FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral};
 use crate::lexer::Lexer;
 use crate::token::{Token, TokenType};
 
@@ -53,6 +53,7 @@ impl Parser {
 
         parser.register_prefix(TokenType::Ident, Parser::parse_identifier);
         parser.register_prefix(TokenType::Integer, Parser::parse_integer_literal);
+        parser.register_prefix(TokenType::String, Parser::parse_string_literal);
         parser.register_prefix(TokenType::Minus, Parser::parse_prefix_expression);
         parser.register_prefix(TokenType::Bang, Parser::parse_prefix_expression);
         parser.register_prefix(TokenType::True, Parser::parse_boolean_literal);
@@ -436,6 +437,15 @@ impl Parser {
         }))
     }
 
+    fn parse_string_literal(&mut self) -> Option<Box<dyn Expression>> {
+        let token = self.cur_token.clone();
+
+        Some(Box::new(StringLiteral {
+            token: token.clone(),
+            value: token.literal,
+        }))
+    }
+
     fn parse_boolean_literal(&mut self) -> Option<Box<dyn Expression>> {
         let token = self.cur_token.clone();
         let boolean = match token.literal.parse::<bool>() {
@@ -548,7 +558,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BlockStatement, BooleanLiteral, CallExpression, ExpressionStatement, FunctionLiteral, IfExpression, InfixExpression, Node, PrefixExpression, ReturnStatement};
+    use crate::ast::{BlockStatement, BooleanLiteral, CallExpression, ExpressionStatement, FunctionLiteral, IfExpression, InfixExpression, Node, PrefixExpression, ReturnStatement, StringLiteral};
 
     use super::*;
 
@@ -774,6 +784,22 @@ mod tests {
 
             assert_boolean_literal(&*stmt.expression, test.expected);
         }
+    }
+
+    #[test]
+    fn parse_string_literal() {
+        let input = "\"hello world\"";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let string = stmt.expression.as_any().downcast_ref::<StringLiteral>()
+            .unwrap_or_else(|| { panic!("Not a string literal") });
+
+        assert_eq!(string.value.as_str(), "hello world")
     }
 
     #[test]
