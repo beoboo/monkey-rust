@@ -55,6 +55,7 @@ impl Lexer {
             ';' => Token::new(TokenType::Semicolon, ch.to_string().as_str()),
             '<' => Token::new(TokenType::Lt, ch.to_string().as_str()),
             '>' => Token::new(TokenType::Gt, ch.to_string().as_str()),
+            '"' => Token::new(TokenType::String, self.read_string()),
             '\0' => Token::new(TokenType::EOF, ""),
             _ => {
                 if is_alpha(ch) {
@@ -113,6 +114,17 @@ impl Lexer {
         let number = self.input[(self.position - 1)..position].as_ref();
         self.position = position;
         number
+    }
+
+    fn read_string(&mut self) -> &str {
+        let position = self.position;
+
+        let mut ch = self.read_next();
+        while ch != '"' && ch != '\0' {
+            ch = self.read_next();
+        }
+
+        self.input[position..self.position-1].as_ref()
     }
 
     fn read_char(&self, position: usize) -> char {
@@ -195,6 +207,8 @@ if (5 < 10) {
 
 10 == 10;
 10 != 9;
+\"foobar\"
+\"foo bar\"
 ";
 
         let expected = vec![
@@ -271,6 +285,8 @@ if (5 < 10) {
             Token::new(TokenType::NotEq, "!="),
             Token::new(TokenType::Integer, "9"),
             Token::new(TokenType::Semicolon, ";"),
+            Token::new(TokenType::String, "foobar"),
+            Token::new(TokenType::String, "foo bar"),
             Token::new(TokenType::EOF, ""),
         ];
 
@@ -278,7 +294,6 @@ if (5 < 10) {
 
         for item in expected {
             let token = lexer.next_token();
-            println!("{:?}", token);
 
             assert_eq!(token.token_type, item.token_type);
             assert_eq!(token.literal, item.literal);

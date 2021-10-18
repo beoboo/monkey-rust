@@ -12,6 +12,7 @@ pub enum ObjectType {
     Integer,
     Null,
     ReturnValue,
+    String,
 }
 
 pub const TRUE : Boolean = Boolean{value: true};
@@ -66,15 +67,15 @@ impl Object for Integer {
         format!("{}", self.value)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn eq(&self, other: &dyn Object) -> bool {
         match other.as_any().downcast_ref::<Integer>() {
             Some(other) => self.value == other.value,
             _ => false
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -92,15 +93,41 @@ impl Object for Boolean {
         format!("{}", self.value)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn eq(&self, other: &dyn Object) -> bool {
         match other.as_any().downcast_ref::<Boolean>() {
             Some(other) => self.value == other.value,
             _ => false
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StringE {
+    pub value: String,
+}
+
+impl Object for StringE {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::String
+    }
+
+    fn inspect(&self) -> String {
+        format!("{}", self.value)
+    }
+
+    fn eq(&self, other: &dyn Object) -> bool {
+        match other.as_any().downcast_ref::<StringE>() {
+            Some(other) => self.value == other.value,
+            _ => false
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -116,12 +143,12 @@ impl Object for Null {
         "null".to_string()
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn eq(&self, other: &dyn Object) -> bool {
         other.get_type() == ObjectType::Null
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -139,15 +166,15 @@ impl Object for ReturnValue {
         self.value.inspect()
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn eq(&self, other: &dyn Object) -> bool {
         match other.as_any().downcast_ref::<ReturnValue>() {
             Some(other) => self.value.eq(other.value.deref()),
             _ => false
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -173,15 +200,15 @@ impl Object for Error {
         format!("Error: {}", self.message)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn eq(&self, other: &dyn Object) -> bool {
         match other.as_any().downcast_ref::<Error>() {
             Some(other) => self.message.eq(other.message.deref()),
             _ => false
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -205,10 +232,6 @@ impl Object for Function {
         format!("fn ({}) {{\n{}\n}}", params.join(", "), self.body)
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn eq(&self, other: &dyn Object) -> bool {
         match other.as_any().downcast_ref::<Function>() {
             Some(other) => {
@@ -222,6 +245,10 @@ impl Object for Function {
             },
             _ => false
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

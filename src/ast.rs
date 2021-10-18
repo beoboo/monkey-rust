@@ -2,7 +2,7 @@ use std::any::Any;
 use std::fmt::{Display, Formatter, Debug};
 
 use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object, ReturnValue, is_error, Error, Function};
+use crate::object::{Integer, Object, ReturnValue, is_error, Error, Function, StringE};
 use crate::token::Token;
 use crate::environment::Environment;
 
@@ -293,42 +293,6 @@ impl Display for Identifier {
 }
 
 #[derive(Clone, Debug)]
-pub struct IntegerLiteral {
-    pub token: Token,
-    pub value: i64,
-}
-
-impl Node for IntegerLiteral {
-    fn token_literal(&self) -> &str {
-        return self.token.literal.as_str();
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_node(&self) -> &dyn Node {
-        self
-    }
-
-    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
-        Some(Box::new(Integer { value: self.value }))
-    }
-}
-
-impl Expression for IntegerLiteral {
-    fn value(&self) -> String {
-        self.value.to_string()
-    }
-}
-
-impl Display for IntegerLiteral {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct PrefixExpression {
     pub token: Token,
     pub operator: String,
@@ -462,6 +426,42 @@ impl Display for IfExpression {
 }
 
 #[derive(Clone, Debug)]
+pub struct IntegerLiteral {
+    pub token: Token,
+    pub value: i64,
+}
+
+impl Node for IntegerLiteral {
+    fn token_literal(&self) -> &str {
+        return self.token.literal.as_str();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
+        Some(Box::new(Integer { value: self.value }))
+    }
+}
+
+impl Expression for IntegerLiteral {
+    fn value(&self) -> String {
+        self.value.to_string()
+    }
+}
+
+impl Display for IntegerLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct BooleanLiteral {
     pub token: Token,
     pub value: bool,
@@ -492,6 +492,42 @@ impl Expression for BooleanLiteral {
 }
 
 impl Display for BooleanLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StringLiteral {
+    pub token: Token,
+    pub value: String,
+}
+
+impl Node for StringLiteral {
+    fn token_literal(&self) -> &str {
+        return self.token.literal.as_str();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
+        Some(Box::new(StringE { value: self.value.clone() }))
+    }
+}
+
+impl Expression for StringLiteral {
+    fn value(&self) -> String {
+        self.value.to_string()
+    }
+}
+
+impl Display for StringLiteral {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
     }
