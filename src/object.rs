@@ -7,6 +7,7 @@ use crate::environment::Environment;
 #[derive(Debug, PartialEq)]
 pub enum ObjectType {
     Boolean,
+    Builtin,
     Error,
     Function,
     Integer,
@@ -18,6 +19,9 @@ pub enum ObjectType {
 pub const TRUE : Boolean = Boolean{value: true};
 pub const FALSE : Boolean = Boolean{value: false};
 pub const NULL : Null = Null{};
+
+type BuiltinFunction = fn(Vec<Box<dyn Object>>) -> Option<Box<dyn Object>>;
+
 
 // pub fn convert<'a, T: 'static + Sized>(obj: &'a Box<dyn Object>) -> Option<&'a T> {
 //     (obj as &'a dyn Any).downcast_ref::<T>()
@@ -245,6 +249,29 @@ impl Object for Function {
             },
             _ => false
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Builtin {
+    pub function: BuiltinFunction,
+}
+
+impl Object for Builtin {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::Builtin
+    }
+
+    fn inspect(&self) -> String {
+        "builtin function".to_string()
+    }
+
+    fn eq(&self, _other: &dyn Object) -> bool {
+        false
     }
 
     fn as_any(&self) -> &dyn Any {

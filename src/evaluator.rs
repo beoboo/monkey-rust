@@ -1,14 +1,40 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 
-use crate::ast::{BlockStatement, IfExpression, Node, Program, Expression};
+use crate::ast::{BlockStatement, Expression, IfExpression, Node, Program, Identifier};
 use crate::environment::Environment;
-use crate::object::{Boolean, Error, FALSE, Integer, is_error, NULL, Object, ObjectType, ReturnValue, TRUE, Function, StringE};
+use crate::object::{Boolean, Builtin, Error, FALSE, Function, Integer, is_error, NULL, Object, ObjectType, ReturnValue, StringE, TRUE};
 
-pub struct Evaluator {}
+pub struct Evaluator {
+    builtins: HashMap<String, Builtin>,
+}
+
+
+fn len_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
+    if args.len() != 1 {
+        return Some(Box::new(Error::new(format!("wrong number of arguments. got={}, want=1", args.len()))));
+    }
+
+    match args[0].get_type() {
+        ObjectType::String => {
+            println!("{:?}: {}", args[0].get_type(), args[0].inspect());
+            let arg = args[0].as_any().downcast_ref::<StringE>().unwrap();
+            Some(Box::new(Integer{value: arg.value.len() as i64}))
+        },
+        _ => Some(Box::new(Error::new(format!("argument to \"len\" not supported, got={:?}", args[0].get_type()))))
+    }
+}
 
 impl Evaluator {
     pub(crate) fn new() -> Self {
-        Self {}
+        let builtins: HashMap<String, Builtin> = vec![
+            ("len".to_string(), Builtin { function: len_builtin })
+        ].into_iter()
+            .collect();
+
+        Self {
+            builtins
+        }
     }
 
     pub fn eval(&self, node: Box<&dyn Node>, env: &mut Environment) -> Option<Box<dyn Object>> {
@@ -142,21 +168,21 @@ impl Evaluator {
 
     fn eval_string_infix_expression(&self, operator: &str, left: Box<dyn Object>, right: Box<dyn Object>) -> Option<Box<dyn Object>> {
         if operator != "+" {
-            return Some(Box::new(Error::new(format!("unknown operator: {:?} {} {:?}", left.get_type(), operator, right.get_type()))))
+            return Some(Box::new(Error::new(format!("unknown operator: {:?} {} {:?}", left.get_type(), operator, right.get_type()))));
         }
 
         let left = left.as_any().downcast_ref::<StringE>().unwrap();
         let right = right.as_any().downcast_ref::<StringE>().unwrap();
 
-        Some(Box::new(StringE{value: left.value.to_owned() + right.value.as_str()}))
+        Some(Box::new(StringE { value: left.value.to_owned() + right.value.as_str() }))
     }
 
     pub fn eval_expressions(&self, exprs: Vec<Box<dyn Expression>>, env: &mut Environment) -> Vec<Box<dyn Object>> {
-        let mut result:Vec<Box<dyn Object>> = vec![];
+        let mut result: Vec<Box<dyn Object>> = vec![];
         for e in exprs {
             let evaluated = self.eval(Box::new(e.as_node()), env);
             if is_error(&evaluated) {
-                return vec![evaluated.unwrap()]
+                return vec![evaluated.unwrap()];
             }
 
             match evaluated {
@@ -169,15 +195,20 @@ impl Evaluator {
     }
 
     pub fn eval_function_call(&self, function: Box<dyn Object>, args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
-        let function = match function.as_any().downcast_ref::<Function>() {
-            Some(function) => function,
-            None => return Some(Box::new(Error::new(format!("not a function: {:?}", function.get_type()))))
-        };
+        match function.get_type() {
+            ObjectType::Function => {
+                let function = function.as_any().downcast_ref::<Function>().unwrap();
+                let mut extended_env = self.extend_function_env(function, args);
+                let evaluated = self.eval(Box::new(function.body.as_node()), &mut extended_env)?;
 
-        let mut extended_env = self.extend_function_env(function, args);
-        let evaluated = self.eval(Box::new(function.body.as_node()), &mut extended_env)?;
-
-        self.unwrap_return_value(evaluated)
+                self.unwrap_return_value(evaluated)
+            }
+            ObjectType::Builtin => {
+                let builtin = function.as_any().downcast_ref::<Builtin>().unwrap();
+                (builtin.function)(args)
+            }
+            _ => Some(Box::new(Error::new(format!("not a function: {:?}", function.get_type()))))
+        }
     }
 
     fn extend_function_env(&self, function: &Function, args: Vec<Box<dyn Object>>) -> Environment {
@@ -190,10 +221,22 @@ impl Evaluator {
         env
     }
 
-    fn unwrap_return_value(&self, object: Box<dyn Object>) -> Option<Box<dyn Object>>  {
+    fn unwrap_return_value(&self, object: Box<dyn Object>) -> Option<Box<dyn Object>> {
         match object.as_any().downcast_ref::<ReturnValue>() {
             Some(return_value) => Some(return_value.value.clone()),
             None => Some(object)
+        }
+    }
+
+    pub fn eval_identifier(&self, identifier: &Identifier, env: &mut Environment) -> Option<Box<dyn Object>> {
+        match env.get(&identifier.value) {
+            Some(identifier) => Some(identifier.clone()),
+            None => {
+                match self.builtins.get(&identifier.value) {
+                    Some(builtin) => Some(Box::new(builtin.clone())),
+                    None => Some(Box::new(Error::new(format!("identifier not found: {}", &identifier.value))))
+                }
+            }
         }
     }
 
@@ -497,6 +540,28 @@ addTwo(2);
 ";
 
         assert_integer_object(eval(input), 4);
+    }
+
+    #[test]
+    fn eval_builtin_functions() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: &'a str,
+        }
+
+        let tests = vec![
+            Test { input: "len(\"\")", expected: "0" },
+            Test { input: "len(\"four\")", expected: "4" },
+            Test { input: "len(\"hello world\")", expected: "11" },
+            Test { input: "len(1)", expected: "Error: argument to \"len\" not supported, got=Integer" },
+            Test { input: "len(\"one\", \"two\")", expected: "Error: wrong number of arguments. got=2, want=1" },
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+
+            assert_eq!(evaluated.inspect().as_str(), test.expected);
+        }
     }
 
     fn eval(input: &str) -> Box<dyn Object> {
