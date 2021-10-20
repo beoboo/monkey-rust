@@ -2,7 +2,7 @@ use std::any::Any;
 use std::fmt::{Display, Formatter, Debug};
 
 use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object, ReturnValue, is_error, Error, Function, StringE};
+use crate::object::{Integer, Object, ReturnValue, is_error, Function, StringE};
 use crate::token::Token;
 use crate::environment::Environment;
 
@@ -272,11 +272,8 @@ impl Node for Identifier {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
-        match env.get(&self.value) {
-            Some(identifier) => Some(identifier.clone()),
-            None => Some(Box::new(Error::new(format!("identifier not found: {}", self.value))))
-        }
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        evaluator.eval_identifier(self, env)
     }
 }
 
