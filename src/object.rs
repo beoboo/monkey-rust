@@ -6,6 +6,7 @@ use crate::environment::Environment;
 
 #[derive(Debug, PartialEq)]
 pub enum ObjectType {
+    Array,
     Boolean,
     Builtin,
     Error,
@@ -268,6 +269,33 @@ impl Object for Builtin {
 
     fn inspect(&self) -> String {
         "builtin function".to_string()
+    }
+
+    fn eq(&self, _other: &dyn Object) -> bool {
+        false
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Array {
+    pub elements: Vec<Box<dyn Object>>,
+}
+
+impl Object for Array {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::Array
+    }
+
+    fn inspect(&self) -> String {
+        let mut elements: Vec<String> = vec![];
+        for e in &self.elements {
+            elements.push(format!("{}", e.inspect()))
+        }
+        format!("[{}]", elements.join(", "))
     }
 
     fn eq(&self, _other: &dyn Object) -> bool {

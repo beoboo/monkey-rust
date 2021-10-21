@@ -2,7 +2,7 @@ use std::any::Any;
 use std::fmt::{Display, Formatter, Debug};
 
 use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object, ReturnValue, is_error, Function, StringE};
+use crate::object::{Integer, Object, ReturnValue, is_error, Function, StringE, Array};
 use crate::token::Token;
 use crate::environment::Environment;
 
@@ -624,6 +624,103 @@ impl Display for CallExpression {
             args.push(format!("{}", param));
         }
         write!(f, "{}({})", self.function, args.join(", "))
+    }
+}
+
+
+#[derive(Clone, Debug)]
+pub struct ArrayLiteral {
+    pub token: Token,
+    pub elements: Vec<Box<dyn Expression>>,
+}
+
+impl Node for ArrayLiteral {
+    fn token_literal(&self) -> &str {
+        return self.token.literal.as_str();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let elements = evaluator.eval_expressions(self.elements.clone(), env);
+
+        if elements.len() == 1 {
+            let element = elements[0].clone();
+            if is_error(&Some(element.clone())) {
+                return Some(element)
+            }
+        }
+
+        Some(Box::new(Array{elements}))
+    }
+}
+
+impl Expression for ArrayLiteral {
+    fn value(&self) -> String {
+        "fn".to_string()
+    }
+}
+
+impl Display for ArrayLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut elements = vec![];
+        for element in &self.elements {
+            elements.push(format!("{}", element));
+        }
+        write!(f, "[{}]", elements.join(", "))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct IndexExpression {
+    pub token: Token,
+    pub left: Box<dyn Expression>,
+    pub index: Box<dyn Expression>,
+}
+
+impl Node for IndexExpression {
+    fn token_literal(&self) -> &str {
+        return self.token.literal.as_str();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let left = evaluator.eval(Box::new(self.left.as_node()), env);
+        if is_error(&left) {
+            return left;
+        }
+
+        let index = evaluator.eval(Box::new(self.index.as_node()), env);
+        if is_error(&index) {
+            return index;
+        }
+
+        return evaluator.eval_index_expression(left.unwrap(), index.unwrap())
+    }
+}
+
+impl Expression for IndexExpression {
+    fn value(&self) -> String {
+        "fn".to_string()
+    }
+}
+
+impl Display for IndexExpression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}[{}])", self.left, self.index)
     }
 }
 
