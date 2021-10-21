@@ -12,6 +12,7 @@ mod ast;
 mod object;
 mod evaluator;
 mod environment;
+mod builtins;
 
 fn main() {
     let username = get_current_username().unwrap();

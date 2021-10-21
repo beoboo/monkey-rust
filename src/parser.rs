@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BlockStatement, BooleanLiteral, CallExpression, Expression, ExpressionStatement, FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral};
+use crate::ast::{ArrayLiteral, BlockStatement, BooleanLiteral, CallExpression, Expression, ExpressionStatement, FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral, IndexExpression};
 use crate::lexer::Lexer;
 use crate::token::{Token, TokenType};
 
@@ -16,6 +16,7 @@ enum Precedence {
     Product,
     Prefix,
     Call,
+    Index,
 }
 
 pub struct Parser {
@@ -46,6 +47,7 @@ impl Parser {
             (TokenType::Slash, Precedence::Product),
             (TokenType::Asterisk, Precedence::Product),
             (TokenType::LParen, Precedence::Call),
+            (TokenType::LBracket, Precedence::Index),
         ].into_iter()
             .collect();
 
@@ -61,6 +63,7 @@ impl Parser {
         parser.register_prefix(TokenType::LParen, Parser::parse_grouped_expression);
         parser.register_prefix(TokenType::If, Parser::parse_if_expression);
         parser.register_prefix(TokenType::Function, Parser::parse_function_literal);
+        parser.register_prefix(TokenType::LBracket, Parser::parse_array_literal);
 
         parser.register_infix(TokenType::Plus, Parser::parse_infix_expression);
         parser.register_infix(TokenType::Minus, Parser::parse_infix_expression);
@@ -71,6 +74,7 @@ impl Parser {
         parser.register_infix(TokenType::Lt, Parser::parse_infix_expression);
         parser.register_infix(TokenType::Gt, Parser::parse_infix_expression);
         parser.register_infix(TokenType::LParen, Parser::parse_call_expression);
+        parser.register_infix(TokenType::LBracket, Parser::parse_index_expression);
 
         parser
     }
@@ -355,7 +359,7 @@ impl Parser {
 
     fn parse_call_expression(&mut self, function: Box<dyn Expression>) -> Option<Box<dyn Expression>> {
         let token = self.cur_token.clone();
-        let arguments = self.parse_call_arguments();
+        let arguments = self.parse_expression_list(TokenType::RParen);
 
         Some(Box::new(CallExpression {
             token,
@@ -364,18 +368,21 @@ impl Parser {
         }))
     }
 
-    fn parse_call_arguments(&mut self) -> Vec<Box<dyn Expression>> {
-        fn _build_identifier(token: Token) -> Identifier {
-            Identifier {
-                token: token.clone(),
-                value: token.literal,
-            }
-        }
-        ;
+    fn parse_array_literal(&mut self) -> Option<Box<dyn Expression>> {
+        let token = self.cur_token.clone();
 
+        let elements = self.parse_expression_list(TokenType::RBracket);
+
+        Some(Box::new(ArrayLiteral {
+            token,
+            elements,
+        }))
+    }
+
+    fn parse_expression_list(&mut self, end: TokenType) -> Vec<Box<dyn Expression>> {
         let mut arguments = vec![];
 
-        if self.next_token_is(TokenType::RParen) {
+        if self.next_token_is(end) {
             self.next_token();
             return arguments;
         }
@@ -396,13 +403,12 @@ impl Parser {
             }
         }
 
-        if !self.expect_next(TokenType::RParen) {
+        if !self.expect_next(end) {
             return vec![];
         }
 
         arguments
     }
-
 
     fn no_prefix_fn_error(&mut self, token_type: &TokenType) {
         let msg = format!("Could not find a prefix function for {}", token_type);
@@ -513,6 +519,27 @@ impl Parser {
         }))
     }
 
+    fn parse_index_expression(&mut self, left: Box<dyn Expression>) -> Option<Box<dyn Expression>> {
+        let token = self.cur_token.clone();
+
+        self.next_token();
+
+        let index = match self.parse_expression(Precedence::Lowest) {
+            Some(expr) => expr,
+            None => return None
+        };
+
+        if !self.expect_next(TokenType::RBracket) {
+            return None
+        }
+
+        Some(Box::new(IndexExpression {
+            token,
+            left,
+            index,
+        }))
+    }
+
     fn cur_token_is(&self, token_type: TokenType) -> bool {
         self.cur_token.token_type == token_type
     }
@@ -558,7 +585,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BlockStatement, BooleanLiteral, CallExpression, ExpressionStatement, FunctionLiteral, IfExpression, InfixExpression, Node, PrefixExpression, ReturnStatement, StringLiteral};
+    use crate::ast::{ArrayLiteral, BlockStatement, BooleanLiteral, CallExpression, ExpressionStatement, FunctionLiteral, IfExpression, IndexExpression, InfixExpression, Node, PrefixExpression, ReturnStatement, StringLiteral};
 
     use super::*;
 
@@ -756,6 +783,8 @@ mod tests {
             Test { input: "!(true == true)", expected: "(!(true == true))" },
             Test { input: "a + add(b * c) + d", expected: "((a + add((b * c))) + d)" },
             Test { input: "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", expected: "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" },
+            Test { input: "a * [1, 2, 3, 4][b * c] * d", expected: "((a * ([1, 2, 3, 4][(b * c)])) * d)"},
+            Test { input: "add(a * b[2], b[1], 2 * [1, 2][1])", expected: "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))"},
         ];
 
         for test in tests {
@@ -922,6 +951,44 @@ mod tests {
         assert_infix_expression(&*call.arguments[2], 4, "+", 5);
     }
 
+    #[test]
+    fn parse_array_literal() {
+        let input = "[1, 2 * 2, 3 + 3]";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let array = stmt.expression.as_any().downcast_ref::<ArrayLiteral>()
+            .unwrap_or_else(|| { panic!("Not an array literal") });
+
+        if array.elements.len() != 3 {
+            panic!("Array has not {} elements, got {}", 3, array.elements.len())
+        }
+
+        assert_integer_literal(&*array.elements[0], 1);
+        assert_infix_expression(&*array.elements[1], 2, "*", 2);
+        assert_infix_expression(&*array.elements[2], 3, "+", 3);
+    }
+
+    #[test]
+    fn parse_index_expression() {
+        let input = "myArray[1 + 1]";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let index = stmt.expression.as_any().downcast_ref::<IndexExpression>()
+            .unwrap_or_else(|| { panic!("Not an index expression") });
+
+        assert_identifier(&*index.left, "myArray");
+        assert_infix_expression(&*index.index, 1, "+", 1);
+    }
 
     fn assert_block_statement(block_stmt: &BlockStatement, count: usize, ident: &str) {
         if block_stmt.statements.len() != count {

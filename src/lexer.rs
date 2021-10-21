@@ -51,6 +51,8 @@ impl Lexer {
             ')' => Token::new(TokenType::RParen, ch.to_string().as_str()),
             '{' => Token::new(TokenType::LBrace, ch.to_string().as_str()),
             '}' => Token::new(TokenType::RBrace, ch.to_string().as_str()),
+            '[' => Token::new(TokenType::LBracket, ch.to_string().as_str()),
+            ']' => Token::new(TokenType::RBracket, ch.to_string().as_str()),
             ',' => Token::new(TokenType::Comma, ch.to_string().as_str()),
             ';' => Token::new(TokenType::Semicolon, ch.to_string().as_str()),
             '<' => Token::new(TokenType::Lt, ch.to_string().as_str()),
@@ -208,7 +210,8 @@ if (5 < 10) {
 10 == 10;
 10 != 9;
 \"foobar\"
-\"foo bar\"
+\"foo bar\"\
+[1, 2]
 ";
 
         let expected = vec![
@@ -287,6 +290,11 @@ if (5 < 10) {
             Token::new(TokenType::Semicolon, ";"),
             Token::new(TokenType::String, "foobar"),
             Token::new(TokenType::String, "foo bar"),
+            Token::new(TokenType::LBracket, "["),
+            Token::new(TokenType::Integer, "1"),
+            Token::new(TokenType::Comma, ","),
+            Token::new(TokenType::Integer, "2"),
+            Token::new(TokenType::RBracket, "]"),
             Token::new(TokenType::EOF, ""),
         ];
 

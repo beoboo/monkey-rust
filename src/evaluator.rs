@@ -3,32 +3,24 @@ use std::ops::Deref;
 
 use crate::ast::{BlockStatement, Expression, IfExpression, Node, Program, Identifier};
 use crate::environment::Environment;
-use crate::object::{Boolean, Builtin, Error, FALSE, Function, Integer, is_error, NULL, Object, ObjectType, ReturnValue, StringE, TRUE};
+use crate::object::{Boolean, Builtin, Error, FALSE, Function, Integer, is_error, NULL, Object, ObjectType, ReturnValue, StringE, TRUE, Array};
+use crate::builtins::{len_builtin, first_builtin, last_builtin, puts_builtin, rest_builtin, push_builtin};
 
 pub struct Evaluator {
     builtins: HashMap<String, Builtin>,
 }
 
 
-fn len_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
-    if args.len() != 1 {
-        return Some(Box::new(Error::new(format!("wrong number of arguments. got={}, want=1", args.len()))));
-    }
-
-    match args[0].get_type() {
-        ObjectType::String => {
-            println!("{:?}: {}", args[0].get_type(), args[0].inspect());
-            let arg = args[0].as_any().downcast_ref::<StringE>().unwrap();
-            Some(Box::new(Integer{value: arg.value.len() as i64}))
-        },
-        _ => Some(Box::new(Error::new(format!("argument to \"len\" not supported, got={:?}", args[0].get_type()))))
-    }
-}
 
 impl Evaluator {
     pub(crate) fn new() -> Self {
         let builtins: HashMap<String, Builtin> = vec![
-            ("len".to_string(), Builtin { function: len_builtin })
+            ("len".to_string(), Builtin { function: len_builtin }),
+            ("puts".to_string(), Builtin { function: puts_builtin }),
+            ("first".to_string(), Builtin { function: first_builtin }),
+            ("last".to_string(), Builtin { function: last_builtin }),
+            ("rest".to_string(), Builtin { function: rest_builtin }),
+            ("push".to_string(), Builtin { function: push_builtin }),
         ].into_iter()
             .collect();
 
@@ -240,6 +232,23 @@ impl Evaluator {
         }
     }
 
+    pub fn eval_index_expression(&self, left: Box<dyn Object>, index: Box<dyn Object>) -> Option<Box<dyn Object>> {
+        if left.get_type() == ObjectType::Array && index.get_type() == ObjectType::Integer {
+            let array = left.as_any().downcast_ref::<Array>()?;
+            let index = index.as_any().downcast_ref::<Integer>()?.value;
+
+            let max = (array.elements.len() - 1) as i64;
+
+            if index < 0 || index > max {
+                return Some(Box::new(NULL));
+            }
+
+            Some(array.elements[index as usize].clone())
+        } else {
+            Some(Box::new(Error::new(format!("{:?} index operator not supported for {:?}", index.get_type(), left.get_type()))))
+        }
+    }
+
     pub fn native_to_bool(&self, input: bool) -> Option<Box<dyn Object>> {
         match input {
             true => Some(Box::new(TRUE)),
@@ -259,7 +268,7 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::lexer::Lexer;
-    use crate::object::{Boolean, Error, Function, Integer, Null, Object, StringE};
+    use crate::object::{Boolean, Error, Function, Integer, Null, Object, StringE, Array};
     use crate::parser::Parser;
 
     use super::*;
@@ -330,28 +339,6 @@ mod tests {
 
             assert_boolean_object(evaluated, test.expected);
         }
-    }
-
-    #[test]
-    fn eval_string_expression() {
-        let input = "\"Hello World!\"";
-
-        let evaluated = eval(input);
-        let string = evaluated.as_any().downcast_ref::<StringE>()
-            .unwrap_or_else(|| panic!("Not a string"));
-
-        assert_eq!(string.value, "Hello World!");
-    }
-
-    #[test]
-    fn eval_string_concatenation() {
-        let input = "\"Hello\" + \" \" + \"World!\"";
-
-        let evaluated = eval(input);
-        let string = evaluated.as_any().downcast_ref::<StringE>()
-            .unwrap_or_else(|| panic!("Not a string"));
-
-        assert_eq!(string.value, "Hello World!");
     }
 
     #[test]
@@ -426,6 +413,25 @@ return 1;
             ",
                 expected: 10,
             },
+            Test {
+                input: "
+let f = fn(x) {
+  return x;
+  x + 10;
+};
+f(10);",
+                expected: 10,
+            },
+            Test {
+                input: "
+let f = fn(x) {
+   let result = x + 10;
+   return result;
+   return 10;
+};
+f(10);",
+                expected: 20,
+            },
         ];
 
         for test in tests {
@@ -461,6 +467,7 @@ if (10 > 1) {
             },
             Test { input: "foobar", expected: "identifier not found: foobar" },
             Test { input: "\"hello\" - \"world\"", expected: "unknown operator: String - String" },
+            Test { input: "999[1]", expected: "Integer index operator not supported for Integer" },
         ];
 
         for test in tests {
@@ -529,6 +536,24 @@ if (10 > 1) {
     }
 
     #[test]
+    fn eval_enclosed_environment() {
+        let input = "\
+let first = 10;
+let second = 10;
+let third = 10;
+
+let ourFunction = fn(first) {
+  let second = 20;
+
+  first + second + third;
+};
+
+ourFunction(20) + first + second;";
+
+        assert_integer_object(eval(input), 70);
+    }
+
+    #[test]
     fn eval_closure() {
         let input = "
 let newAdder = fn(x) {
@@ -543,6 +568,28 @@ addTwo(2);
     }
 
     #[test]
+    fn eval_string_literal() {
+        let input = "\"Hello World!\"";
+
+        let evaluated = eval(input);
+        let string = evaluated.as_any().downcast_ref::<StringE>()
+            .unwrap_or_else(|| panic!("Not a string"));
+
+        assert_eq!(string.value, "Hello World!");
+    }
+
+    #[test]
+    fn eval_string_concatenation() {
+        let input = "\"Hello\" + \" \" + \"World!\"";
+
+        let evaluated = eval(input);
+        let string = evaluated.as_any().downcast_ref::<StringE>()
+            .unwrap_or_else(|| panic!("Not a string"));
+
+        assert_eq!(string.value, "Hello World!");
+    }
+
+    #[test]
     fn eval_builtin_functions() {
         struct Test<'a> {
             input: &'a str,
@@ -553,14 +600,69 @@ addTwo(2);
             Test { input: "len(\"\")", expected: "0" },
             Test { input: "len(\"four\")", expected: "4" },
             Test { input: "len(\"hello world\")", expected: "11" },
-            Test { input: "len(1)", expected: "Error: argument to \"len\" not supported, got=Integer" },
+            Test { input: "len(1)", expected: "Error: argument to \"len\" not supported, got Integer" },
             Test { input: "len(\"one\", \"two\")", expected: "Error: wrong number of arguments. got=2, want=1" },
+            Test { input: "len([1, 2, 3])", expected: "3" },
+            Test { input: "len([])", expected: "0" },
+            Test { input: "puts(\"hello\", \"world!\")", expected: "null" },
+            Test { input: "first([1, 2, 3])", expected: "1" },
+            Test { input: "first([])", expected: "null" },
+            Test { input: "first(1)", expected: "Error: argument to \"first\" must be Array, got Integer" },
+            Test { input: "last([1, 2, 3])", expected: "3" },
+            Test { input: "last([])", expected: "null" },
+            Test { input: "last(1)", expected: "Error: argument to \"last\" must be Array, got Integer" },
+            Test { input: "rest([1, 2, 3])", expected: "[2, 3]" },
+            Test { input: "rest([])", expected: "null" },
+            Test { input: "push([], 1)", expected: "[1]" },
+            Test { input: "push(1, 1)", expected: "Error: argument to \"push\" must be Array, got Integer" },
         ];
 
         for test in tests {
             let evaluated = eval(test.input);
 
             assert_eq!(evaluated.inspect().as_str(), test.expected);
+        }
+    }
+
+    #[test]
+    fn eval_array() {
+        let input = "[1, 2 * 2, 3 + 3]";
+        let evaluated = eval(input);
+        let array = evaluated.as_any().downcast_ref::<Array>().unwrap_or_else(|| panic!("Invalid array"));
+
+        assert_eq!(array.elements.len(), 3);
+        assert_integer_object(array.elements[0].clone(), 1);
+        assert_integer_object(array.elements[1].clone(), 4);
+        assert_integer_object(array.elements[2].clone(), 6);
+    }
+
+    #[test]
+    fn eval_index_expressions() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: Option<i64>,
+        }
+
+        let tests = vec![
+            Test { input: "[1, 2, 3][0]", expected: Some(1) },
+            Test { input: "[1, 2, 3][1]", expected: Some(2) },
+            Test { input: "[1, 2, 3][2]", expected: Some(3) },
+            Test { input: "let i = 0; [1][i];", expected: Some(1) },
+            Test { input: "[1, 2, 3][1 + 1]", expected: Some(3) },
+            Test { input: "let myArray = [1, 2, 3]; myArray[2];", expected: Some(3) },
+            Test { input: "let myArray = [1, 2, 3]; myArray[0] + myArray[1] + myArray[2];", expected: Some(6) },
+            Test { input: "let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]", expected: Some(2) },
+            Test { input: "[1, 2, 3][3]", expected: None },
+            Test { input: "[1, 2, 3][-1]", expected: None },
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+
+            match test.expected {
+                Some(n) => assert_integer_object(evaluated, n),
+                None => assert_null_object(evaluated)
+            }
         }
     }
 
