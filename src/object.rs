@@ -3,14 +3,18 @@ use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 use crate::ast::{Identifier, BlockStatement};
 use crate::environment::Environment;
+use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ObjectType {
     Array,
     Boolean,
     Builtin,
     Error,
     Function,
+    Map,
     Integer,
     Null,
     ReturnValue,
@@ -22,11 +26,6 @@ pub const FALSE : Boolean = Boolean{value: false};
 pub const NULL : Null = Null{};
 
 type BuiltinFunction = fn(Vec<Box<dyn Object>>) -> Option<Box<dyn Object>>;
-
-
-// pub fn convert<'a, T: 'static + Sized>(obj: &'a Box<dyn Object>) -> Option<&'a T> {
-//     (obj as &'a dyn Any).downcast_ref::<T>()
-// }
 
 pub trait BaseObject {
     fn clone_box(&self) -> Box<dyn Object>;
@@ -56,6 +55,19 @@ pub trait Object : BaseObject {
     fn inspect(&self) -> String;
     fn eq(&self, other: &dyn Object) -> bool;
     fn as_any(&self) -> &dyn Any;
+    fn map_key(&self) -> Option<MapKey>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MapKey {
+    pub object_type: ObjectType,
+    pub value: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Pair {
+    pub key: Box<dyn Object>,
+    pub value: Box<dyn Object>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +93,10 @@ impl Object for Integer {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        Some(MapKey{object_type: ObjectType::Integer, value: self.value as u64})
     }
 }
 
@@ -108,6 +124,10 @@ impl Object for Boolean {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn map_key(&self) -> Option<MapKey> {
+        Some(MapKey{object_type: ObjectType::String, value: if self.value { 1 } else { 0 } })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +154,14 @@ impl Object for StringE {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn map_key(&self) -> Option<MapKey> {
+        let mut hasher = DefaultHasher::new();
+        self.value.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        Some(MapKey{object_type: ObjectType::String, value: hash})
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +182,10 @@ impl Object for Null {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
     }
 }
 
@@ -180,6 +212,10 @@ impl Object for ReturnValue {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
     }
 }
 
@@ -214,6 +250,10 @@ impl Object for Error {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
     }
 }
 
@@ -255,6 +295,10 @@ impl Object for Function {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -277,6 +321,10 @@ impl Object for Builtin {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
     }
 }
 
@@ -305,11 +353,90 @@ impl Object for Array {
     fn as_any(&self) -> &dyn Any {
         self
     }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Map {
+    pub pairs: HashMap<MapKey, Pair>
+}
+
+impl Object for Map {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::Map
+    }
+
+    fn inspect(&self) -> String {
+        let mut pairs: Vec<String> = vec![];
+        for pair in self.pairs.values() {
+            pairs.push(format!("{}: {}", pair.key.inspect(), pair.value.inspect()))
+        }
+        format!("{{{}}}", pairs.join(", "))
+    }
+
+    fn eq(&self, _other: &dyn Object) -> bool {
+        false
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
+    }
 }
 
 pub fn is_error(obj: &Option<Box<dyn Object>>) -> bool {
     match obj {
         Some(obj) => obj.get_type() == ObjectType::Error,
         None => true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strings() {
+        let hello1 = StringE{value: "hello world".to_string()};
+        let hello2 = StringE{value: "hello world".to_string()};
+
+        let diff1 = StringE{value: "another world".to_string()};
+        let diff2 = StringE{value: "another world".to_string()};
+
+        assert_eq!(hello1.map_key(), hello2.map_key());
+        assert_eq!(diff1.map_key(), diff2.map_key());
+        assert_ne!(hello1.map_key(), diff1.map_key());
+    }
+
+    #[test]
+    fn test_integers() {
+        let int1 = Integer{value: 1};
+        let int2 = Integer{value: 1};
+
+        let diff1 = Integer{value: 2};
+        let diff2 = Integer{value: 2};
+
+        assert_eq!(int1.map_key(), int2.map_key());
+        assert_eq!(diff1.map_key(), diff2.map_key());
+        assert_ne!(int1.map_key(), diff1.map_key());
+    }
+
+    #[test]
+    fn test_booleans() {
+        let bool1 = Boolean{value: true};
+        let bool2 = Boolean{value: true};
+
+        let diff1 = Boolean{value: false};
+        let diff2 = Boolean{value: false};
+
+        assert_eq!(bool1.map_key(), bool2.map_key());
+        assert_eq!(diff1.map_key(), diff2.map_key());
+        assert_ne!(bool1.map_key(), diff1.map_key());
     }
 }

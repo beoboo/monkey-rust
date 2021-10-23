@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{ArrayLiteral, BlockStatement, BooleanLiteral, CallExpression, Expression, ExpressionStatement, FunctionLiteral, Identifier, IfExpression, InfixExpression, IntegerLiteral, LetStatement, PrefixExpression, Program, ReturnStatement, Statement, StringLiteral, IndexExpression};
+use crate::ast::*;
 use crate::lexer::Lexer;
 use crate::token::{Token, TokenType};
 
@@ -64,6 +64,7 @@ impl Parser {
         parser.register_prefix(TokenType::If, Parser::parse_if_expression);
         parser.register_prefix(TokenType::Function, Parser::parse_function_literal);
         parser.register_prefix(TokenType::LBracket, Parser::parse_array_literal);
+        parser.register_prefix(TokenType::LBrace, Parser::parse_map_literal);
 
         parser.register_infix(TokenType::Plus, Parser::parse_infix_expression);
         parser.register_infix(TokenType::Minus, Parser::parse_infix_expression);
@@ -379,6 +380,38 @@ impl Parser {
         }))
     }
 
+    fn parse_map_literal(&mut self) -> Option<Box<dyn Expression>> {
+        let token = self.cur_token.clone();
+
+        let mut pairs = HashMap::new();
+
+        while !self.next_token_is(TokenType::RBrace) {
+            self.next_token();
+
+                let key = self.parse_expression(Precedence::Lowest)?;
+            if !self.expect_next(TokenType::Colon) {
+                        return None
+            }
+
+            self.next_token();
+            let value = self.parse_expression(Precedence::Lowest)?;
+            pairs.insert(key, value);
+
+            if !self.next_token_is(TokenType::RBrace) && !self.expect_next(TokenType::Comma) {
+                        return None
+            }
+        }
+
+        if !self.expect_next(TokenType::RBrace) {
+            return None
+        }
+
+        Some(Box::new(MapLiteral {
+            token,
+            pairs,
+        }))
+    }
+
     fn parse_expression_list(&mut self, end: TokenType) -> Vec<Box<dyn Expression>> {
         let mut arguments = vec![];
 
@@ -530,7 +563,7 @@ impl Parser {
         };
 
         if !self.expect_next(TokenType::RBracket) {
-            return None
+            return None;
         }
 
         Some(Box::new(IndexExpression {
@@ -585,9 +618,8 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{ArrayLiteral, BlockStatement, BooleanLiteral, CallExpression, ExpressionStatement, FunctionLiteral, IfExpression, IndexExpression, InfixExpression, Node, PrefixExpression, ReturnStatement, StringLiteral};
-
     use super::*;
+    use std::ops::Deref;
 
     #[test]
     fn parse_let_statement() {
@@ -783,8 +815,8 @@ mod tests {
             Test { input: "!(true == true)", expected: "(!(true == true))" },
             Test { input: "a + add(b * c) + d", expected: "((a + add((b * c))) + d)" },
             Test { input: "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))", expected: "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))" },
-            Test { input: "a * [1, 2, 3, 4][b * c] * d", expected: "((a * ([1, 2, 3, 4][(b * c)])) * d)"},
-            Test { input: "add(a * b[2], b[1], 2 * [1, 2][1])", expected: "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))"},
+            Test { input: "a * [1, 2, 3, 4][b * c] * d", expected: "((a * ([1, 2, 3, 4][(b * c)])) * d)" },
+            Test { input: "add(a * b[2], b[1], 2 * [1, 2][1])", expected: "add((a * (b[2])), (b[1]), (2 * ([1, 2][1])))" },
         ];
 
         for test in tests {
@@ -988,6 +1020,156 @@ mod tests {
 
         assert_identifier(&*index.left, "myArray");
         assert_infix_expression(&*index.index, 1, "+", 1);
+    }
+
+    #[test]
+    fn parse_empty_hash_literal() {
+        let input = "{}";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let hash = stmt.expression.as_any().downcast_ref::<MapLiteral>()
+            .unwrap_or_else(|| { panic!("Not an hash literal") });
+
+        if hash.pairs.len() != 0 {
+            panic!("Hash has not {} pairs, got {}", 0, hash.pairs.len())
+        }
+    }
+
+    #[test]
+    fn parse_map_literal_string_keys() {
+        let input = "{\"one\": 1, \"two\": 2, \"three\": 3}";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let hash = stmt.expression.as_any().downcast_ref::<MapLiteral>()
+            .unwrap_or_else(|| { panic!("Not an hash literal") });
+
+        if hash.pairs.len() != 3 {
+            panic!("Hash has not {} pairs, got {}", 3, hash.pairs.len())
+        }
+
+        let expected: HashMap<&str, i64> = vec![
+            ("one", 1i64),
+            ("two", 2i64),
+            ("three", 3i64),
+        ].into_iter().collect();
+
+        for (key, value) in &hash.pairs {
+            let literal = key.as_any().downcast_ref::<StringLiteral>()
+                .unwrap_or_else(|| { panic!("Not a string literal") });
+
+            let expected_value = expected[literal.to_string().as_str()];
+
+            assert_integer_literal(value.deref(), expected_value)
+        }
+    }
+
+    #[test]
+    fn parse_map_literal_boolean_keys() {
+        let input = "{true: 1, false: 2}";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let hash = stmt.expression.as_any().downcast_ref::<MapLiteral>()
+            .unwrap_or_else(|| { panic!("Not an hash literal") });
+
+        if hash.pairs.len() != 2 {
+            panic!("Hash has not {} pairs, got {}", 2, hash.pairs.len())
+        }
+
+        let expected: HashMap<&str, i64> = vec![
+            ("true", 1i64),
+            ("false", 2i64),
+        ].into_iter().collect();
+
+        for (key, value) in &hash.pairs {
+            let literal = key.as_any().downcast_ref::<BooleanLiteral>()
+                .unwrap_or_else(|| { panic!("Not a boolean literal") });
+
+            let expected_value = expected[literal.to_string().as_str()];
+
+            assert_integer_literal(value.deref(), expected_value)
+        }
+    }
+
+    #[test]
+    fn parse_map_literal_integer_keys() {
+        let input = "{1: 1, 2: 2, 3: 3}";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let hash = stmt.expression.as_any().downcast_ref::<MapLiteral>()
+            .unwrap_or_else(|| { panic!("Not an hash literal") });
+
+        if hash.pairs.len() != 3 {
+            panic!("Hash has not {} pairs, got {}", 3, hash.pairs.len())
+        }
+
+        let expected: HashMap<&str, i64> = vec![
+            ("1", 1i64),
+            ("2", 2i64),
+            ("3", 3i64),
+        ].into_iter().collect();
+
+        for (key, value) in &hash.pairs {
+            let literal = key.as_any().downcast_ref::<IntegerLiteral>()
+                .unwrap_or_else(|| { panic!("Not an integer literal") });
+
+            let expected_value = expected[literal.to_string().as_str()];
+
+            assert_integer_literal(value.deref(), expected_value)
+        }
+    }
+
+    #[test]
+    fn parse_map_literal_expression_values() {
+        let input = "{\"one\": 0 + 1, \"two\": 10 - 8, \"three\": 15 / 5}";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let hash = stmt.expression.as_any().downcast_ref::<MapLiteral>()
+            .unwrap_or_else(|| { panic!("Not an hash literal") });
+
+        if hash.pairs.len() != 3 {
+            panic!("Hash has not {} pairs, got {}", 3, hash.pairs.len())
+        }
+
+        type AssertFn = fn(exp: &dyn Expression);
+
+        let mut expected: HashMap<&str, AssertFn> = HashMap::new();
+        expected.insert("one", |exp| assert_infix_expression(exp, 0, "+", 1));
+        expected.insert("two", |exp| assert_infix_expression(exp, 10, "-", 8));
+        expected.insert("three", |exp| assert_infix_expression(exp, 15, "/", 5));
+
+        for (key, value) in &hash.pairs {
+            let literal = key.as_any().downcast_ref::<StringLiteral>()
+                .unwrap_or_else(|| { panic!("Not a string literal") });
+
+            let assert_fn = expected.get(literal.to_string().as_str()).unwrap_or_else(|| { panic!("No assert function for {}", literal)});
+
+            assert_fn(value.deref());
+        }
     }
 
     fn assert_block_statement(block_stmt: &BlockStatement, count: usize, ident: &str) {
