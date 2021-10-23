@@ -7,6 +7,7 @@ pub enum TokenType {
     Asterisk,
     Bang,
     Comma,
+    Colon,
     Eq,
     Else,
     False,

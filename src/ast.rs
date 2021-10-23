@@ -5,6 +5,8 @@ use crate::evaluator::Evaluator;
 use crate::object::{Integer, Object, ReturnValue, is_error, Function, StringE, Array};
 use crate::token::Token;
 use crate::environment::Environment;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 pub trait BaseNode {
     fn clone_node(&self) -> Box<dyn Node>;
@@ -51,6 +53,22 @@ impl Clone for Box<dyn Expression> {
 impl Clone for Box<dyn Statement> {
     fn clone(&self) -> Box<dyn Statement> {
         self.clone_statement()
+    }
+}
+
+impl PartialEq<Self> for dyn Expression {
+    fn eq(&self, other: &Self) -> bool {
+        return self.to_string() == other.to_string()
+    }
+}
+
+impl Eq for dyn Expression {
+
+}
+
+impl Hash for dyn Expression {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.to_string().hash(state)
     }
 }
 
@@ -721,6 +739,46 @@ impl Expression for IndexExpression {
 impl Display for IndexExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}[{}])", self.left, self.index)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MapLiteral {
+    pub token: Token,
+    pub pairs: HashMap<Box<dyn Expression>, Box<dyn Expression>>,
+}
+
+impl Node for MapLiteral {
+    fn token_literal(&self) -> &str {
+        return self.token.literal.as_str();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        evaluator.eval_map_literal(self, env)
+    }
+}
+
+impl Expression for MapLiteral {
+    fn value(&self) -> String {
+        "hash".to_string()
+    }
+}
+
+impl Display for MapLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut pairs = vec![];
+        for (key, value) in &self.pairs {
+            pairs.push(format!("{}: {}", key, value));
+        }
+        write!(f, "{{{}}}", pairs.join(", "))
     }
 }
 

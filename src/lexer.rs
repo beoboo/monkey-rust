@@ -29,7 +29,7 @@ impl Lexer {
 
                     Token::new(TokenType::Eq, str.as_str())
                 } else {
-                    Token::new(TokenType::Assign, ch.to_string().as_str())
+                    self.new_token(TokenType::Assign, ch)
                 }
             },
             '!' => {
@@ -40,23 +40,24 @@ impl Lexer {
 
                     Token::new(TokenType::NotEq, str.as_str())
                 } else {
-                    Token::new(TokenType::Bang, ch.to_string().as_str())
+                    self.new_token(TokenType::Bang, ch)
                 }
             },
-            '+' => Token::new(TokenType::Plus, ch.to_string().as_str()),
-            '-' => Token::new(TokenType::Minus, ch.to_string().as_str()),
-            '/' => Token::new(TokenType::Slash, ch.to_string().as_str()),
-            '*' => Token::new(TokenType::Asterisk, ch.to_string().as_str()),
-            '(' => Token::new(TokenType::LParen, ch.to_string().as_str()),
-            ')' => Token::new(TokenType::RParen, ch.to_string().as_str()),
-            '{' => Token::new(TokenType::LBrace, ch.to_string().as_str()),
-            '}' => Token::new(TokenType::RBrace, ch.to_string().as_str()),
-            '[' => Token::new(TokenType::LBracket, ch.to_string().as_str()),
-            ']' => Token::new(TokenType::RBracket, ch.to_string().as_str()),
-            ',' => Token::new(TokenType::Comma, ch.to_string().as_str()),
-            ';' => Token::new(TokenType::Semicolon, ch.to_string().as_str()),
-            '<' => Token::new(TokenType::Lt, ch.to_string().as_str()),
-            '>' => Token::new(TokenType::Gt, ch.to_string().as_str()),
+            '+' => self.new_token(TokenType::Plus, ch),
+            '-' => self.new_token(TokenType::Minus, ch),
+            '/' => self.new_token(TokenType::Slash, ch),
+            '*' => self.new_token(TokenType::Asterisk, ch),
+            '(' => self.new_token(TokenType::LParen, ch),
+            ')' => self.new_token(TokenType::RParen, ch),
+            '{' => self.new_token(TokenType::LBrace, ch),
+            '}' => self.new_token(TokenType::RBrace, ch),
+            '[' => self.new_token(TokenType::LBracket, ch),
+            ']' => self.new_token(TokenType::RBracket, ch),
+            ',' => self.new_token(TokenType::Comma, ch),
+            ':' => self.new_token(TokenType::Colon, ch),
+            ';' => self.new_token(TokenType::Semicolon, ch),
+            '<' => self.new_token(TokenType::Lt, ch),
+            '>' => self.new_token(TokenType::Gt, ch),
             '"' => Token::new(TokenType::String, self.read_string()),
             '\0' => Token::new(TokenType::EOF, ""),
             _ => {
@@ -66,10 +67,14 @@ impl Lexer {
                 } else if is_digit(ch) {
                     Token::new(TokenType::Integer, self.read_integer())
                 } else {
-                    Token::new(TokenType::Illegal, ch.to_string().as_str())
+                    self.new_token(TokenType::Illegal, ch)
                 }
             }
         }
+    }
+
+    fn new_token(&self, token_type: TokenType, ch: char) -> Token {
+        Token::new(token_type, ch.to_string().as_str())
     }
 
     fn read_next(&mut self) -> char {
@@ -212,6 +217,7 @@ if (5 < 10) {
 \"foobar\"
 \"foo bar\"\
 [1, 2]
+{\"foo\": \"bar\"}
 ";
 
         let expected = vec![
@@ -295,6 +301,11 @@ if (5 < 10) {
             Token::new(TokenType::Comma, ","),
             Token::new(TokenType::Integer, "2"),
             Token::new(TokenType::RBracket, "]"),
+            Token::new(TokenType::LBrace, "{"),
+            Token::new(TokenType::String, "foo"),
+            Token::new(TokenType::Colon, ":"),
+            Token::new(TokenType::String, "bar"),
+            Token::new(TokenType::RBrace, "}"),
             Token::new(TokenType::EOF, ""),
         ];
 

@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use crate::ast::{BlockStatement, Expression, IfExpression, Node, Program, Identifier};
+use crate::ast::*;
 use crate::environment::Environment;
-use crate::object::{Boolean, Builtin, Error, FALSE, Function, Integer, is_error, NULL, Object, ObjectType, ReturnValue, StringE, TRUE, Array};
-use crate::builtins::{len_builtin, first_builtin, last_builtin, puts_builtin, rest_builtin, push_builtin};
+use crate::object::*;
+use crate::builtins::*;
 
 pub struct Evaluator {
     builtins: HashMap<String, Builtin>,
 }
-
 
 
 impl Evaluator {
@@ -244,9 +243,45 @@ impl Evaluator {
             }
 
             Some(array.elements[index as usize].clone())
+        } else if left.get_type() == ObjectType::Map {
+            let map = left.as_any().downcast_ref::<Map>()?;
+            let key = match index.map_key() {
+                Some(key) => key,
+                None => return Some(Box::new(Error::new(format!("{:?} not usable as map key", index.get_type()))))
+            };
+
+            let pair = map.pairs.get(&key)?;
+
+            Some(pair.value.clone())
         } else {
             Some(Box::new(Error::new(format!("{:?} index operator not supported for {:?}", index.get_type(), left.get_type()))))
         }
+    }
+
+    pub fn eval_map_literal(&self, map: &MapLiteral, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let mut pairs: HashMap<MapKey, Pair> = HashMap::new();
+
+        for (key, value) in &map.pairs {
+            let key = self.eval(Box::new(key.as_node()), env);
+            if is_error(&key) {
+                return key;
+            }
+
+            let key = key.unwrap();
+            let value = self.eval(Box::new(value.as_node()), env);
+            if is_error(&value) {
+                return value;
+            }
+
+            let map_key = match key.map_key() {
+                Some(key) => key,
+                None => return None
+            };
+
+            pairs.insert(map_key, Pair { key: key, value: value.unwrap() });
+        }
+
+        Some(Box::new(Map { pairs }))
     }
 
     pub fn native_to_bool(&self, input: bool) -> Option<Box<dyn Object>> {
@@ -268,7 +303,6 @@ impl Evaluator {
 #[cfg(test)]
 mod tests {
     use crate::lexer::Lexer;
-    use crate::object::{Boolean, Error, Function, Integer, Null, Object, StringE, Array};
     use crate::parser::Parser;
 
     use super::*;
@@ -468,6 +502,7 @@ if (10 > 1) {
             Test { input: "foobar", expected: "identifier not found: foobar" },
             Test { input: "\"hello\" - \"world\"", expected: "unknown operator: String - String" },
             Test { input: "999[1]", expected: "Integer index operator not supported for Integer" },
+            Test { input: "{\"name\": \"Monkey\"}[fn(x) { x }];", expected: "Function not usable as map key" },
         ];
 
         for test in tests {
@@ -654,6 +689,67 @@ addTwo(2);
             Test { input: "let myArray = [1, 2, 3]; let i = myArray[0]; myArray[i]", expected: Some(2) },
             Test { input: "[1, 2, 3][3]", expected: None },
             Test { input: "[1, 2, 3][-1]", expected: None },
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+
+            match test.expected {
+                Some(n) => assert_integer_object(evaluated, n),
+                None => assert_null_object(evaluated)
+            }
+        }
+    }
+
+    #[test]
+    fn eval_map() {
+        let input = "let two = \"two\"; \
+{
+    \"one\": 10 - 9, \
+    two: 1 + 1, \
+    \"thr\" + \"ee\": 6 / 2,
+    4: 4,
+    true: 5,
+    false: 6
+}";
+        let evaluated = eval(input);
+        let map = evaluated.as_any().downcast_ref::<Map>().unwrap_or_else(|| panic!("Invalid map"));
+
+        let expected: HashMap<MapKey, i64> = vec![
+            (StringE { value: "one".to_string() }.map_key().unwrap(), 1),
+            (StringE { value: "two".to_string() }.map_key().unwrap(), 2),
+            (StringE { value: "three".to_string() }.map_key().unwrap(), 3),
+            (Integer { value: 4 }.map_key().unwrap(), 4),
+            (Boolean { value: true }.map_key().unwrap(), 5),
+            (Boolean { value: false }.map_key().unwrap(), 6),
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(map.pairs.len(), expected.len());
+
+        for (key, value) in expected {
+            let pair = map.pairs.get(&key).unwrap_or_else(|| panic!("No pair for the given key"));
+
+            assert_integer_object(pair.value.clone(), value);
+        }
+    }
+
+    #[test]
+    fn eval_map_index_expressions() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: Option<i64>,
+        }
+
+        let tests = vec![
+            Test { input: "{\"foo\": 5}[\"foo\"]", expected: Some(5) },
+            Test { input: "{\"foo\": 5}[\"bar\"]", expected: None },
+            Test { input: "let key = \"foo\"; {\"foo\": 5}[key]", expected: Some(5) },
+            Test { input: "{}[\"foo\"]", expected: None },
+            Test { input: "{5: 5}[5]", expected: Some(5) },
+            Test { input: "{true: 5}[true]", expected: Some(5) },
+            Test { input: "{false: 5}[false]", expected: Some(5) },
         ];
 
         for test in tests {
