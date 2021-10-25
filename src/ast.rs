@@ -610,6 +610,10 @@ impl Node for CallExpression {
     }
 
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+        if self.function.token_literal() == "quote" {
+            return evaluator.quote(self.arguments[0].clone_node())
+        }
+
         let function = evaluator.eval(Box::new(self.function.as_node()), env);
         if is_error(&function) {
             return function

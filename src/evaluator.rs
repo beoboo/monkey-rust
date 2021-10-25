@@ -298,6 +298,10 @@ impl Evaluator {
             _ => true
         }
     }
+
+    pub fn quote(&self, node: Box<dyn Node>) -> Option<Box<dyn Object>> {
+        Some(Box::new(Quote{node: Some(node)}))
+    }
 }
 
 #[cfg(test)]
@@ -759,6 +763,30 @@ addTwo(2);
                 Some(n) => assert_integer_object(evaluated, n),
                 None => assert_null_object(evaluated)
             }
+        }
+    }
+
+    #[test]
+    fn eval_quote() {
+        struct Test<'a> {
+            input: &'a str,
+            expected: &'a str,
+        }
+
+        let tests = vec![
+            Test { input: "quote(5)", expected: "5" },
+            Test { input: "quote(5 + 8)", expected: "(5 + 8)" },
+            Test { input: "quote(foobar)", expected: "foobar" },
+            Test { input: "quote(foo + bar)", expected: "(foo + bar)" },
+        ];
+
+        for test in tests {
+            let evaluated = eval(test.input);
+            let quote = evaluated.as_any().downcast_ref::<Quote>().unwrap_or_else(|| panic!("Not a quote"));
+
+            assert!(quote.node.is_some());
+            let node = quote.node.as_ref().unwrap();
+            assert_eq!(node.to_string(), test.expected);
         }
     }
 
