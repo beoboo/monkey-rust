@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
-use crate::ast::{Identifier, BlockStatement};
+use crate::ast::{Identifier, BlockStatement, Node};
 use crate::environment::Environment;
 use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
@@ -17,6 +17,7 @@ pub enum ObjectType {
     Map,
     Integer,
     Null,
+    Quote,
     ReturnValue,
     String,
 }
@@ -375,6 +376,36 @@ impl Object for Map {
             pairs.push(format!("{}: {}", pair.key.inspect(), pair.value.inspect()))
         }
         format!("{{{}}}", pairs.join(", "))
+    }
+
+    fn eq(&self, _other: &dyn Object) -> bool {
+        false
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Quote {
+    pub node: Option<Box<dyn Node>>
+}
+
+impl Object for Quote {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::Quote
+    }
+
+    fn inspect(&self) -> String {
+        format!("QUOTE({})", match &self.node {
+            Some (node) => node.to_string(),
+            None => "".to_string()
+        })
     }
 
     fn eq(&self, _other: &dyn Object) -> bool {
