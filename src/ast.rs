@@ -7,8 +7,10 @@ use crate::token::Token;
 use crate::environment::Environment;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use intertrait::*;
+use intertrait::cast::*;
 
-pub trait BaseNode {
+pub trait BaseNode : Any {
     fn clone_node(&self) -> Box<dyn Node>;
 }
 
@@ -58,13 +60,11 @@ impl Clone for Box<dyn Statement> {
 
 impl PartialEq<Self> for dyn Expression {
     fn eq(&self, other: &Self) -> bool {
-        return self.to_string() == other.to_string()
+        return self.to_string() == other.to_string();
     }
 }
 
-impl Eq for dyn Expression {
-
-}
+impl Eq for dyn Expression {}
 
 impl Hash for dyn Expression {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -72,17 +72,64 @@ impl Hash for dyn Expression {
     }
 }
 
-pub trait Node : BaseNode + Debug + Display {
+pub trait Node: BaseNode + Debug + Display + CastFrom {
     fn token_literal(&self) -> &str;
     fn as_any(&self) -> &dyn Any;
     fn as_node(&self) -> &dyn Node;
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>>;
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node>;
 }
 
 pub trait Statement: BaseStatement + Node {}
 
 pub trait Expression: BaseExpression + Node {
     fn value(&self) -> String;
+}
+
+pub type ModifierFn<'a> = dyn FnMut(Box<dyn Node>) -> Box<dyn Node> + 'a;
+
+//#[derive(Clone, Copy)]
+pub struct ModifierImpl<'a> {
+    pub modifier_fn: &'a mut ModifierFn<'a>,
+}
+
+pub trait Modifier {
+    fn modify(&mut self, node: Box<dyn Node>) -> Box<dyn Node>;
+
+    fn modify_expression(&mut self, expr: Box<dyn Expression>) -> Box<dyn Expression> {
+        let node = self.modify(expr.clone_node());
+        node.cast::<dyn Expression>().unwrap().clone() as Box<dyn Expression>
+    }
+
+    fn modify_statement(&mut self, stmt: &Box<dyn Statement>) -> Box<dyn Statement> {
+        let node = self.modify(stmt.clone_node());
+        node.cast::<dyn Statement>().unwrap().clone() as Box<dyn Statement>
+    }
+
+    fn modify_block_statement(&mut self, block: BlockStatement) -> BlockStatement {
+        let node = self.modify(block.clone_node());
+        node.as_any().downcast_ref::<BlockStatement>().unwrap().clone()
+    }
+
+    fn modify_identifier(&mut self, identifier: &Identifier) -> Identifier {
+        let node = self.modify(identifier.clone_node());
+        node.as_any().downcast_ref::<Identifier>().unwrap().clone()
+    }
+
+    fn apply(&mut self, node: Box<dyn Node>) -> Box<dyn Node>;
+}
+
+impl<'a> Modifier for ModifierImpl<'a> {
+    fn modify(&mut self, node: Box<dyn Node>) -> Box<dyn Node> {
+        println!("Modifying: {:?}", node);
+
+        node.modify(self)
+    }
+
+    fn apply(&mut self, node: Box<dyn Node>) -> Box<dyn Node> {
+        println!("Applying: {:?}", node);
+        (self.modifier_fn)(node.clone())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -109,6 +156,16 @@ impl Node for Program {
 
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_program(self, env)
+    }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        let statements = node.statements.clone();
+        for (i, statement) in statements.iter().enumerate() {
+            node.statements[i] = modifier.modify_statement(statement);
+        }
+
+        modifier.apply(node.clone_node())
     }
 }
 
@@ -155,8 +212,16 @@ impl Node for LetStatement {
 
         None
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        node.value = modifier.modify_expression(node.value);
+
+        modifier.apply(node.clone_node())
+    }
 }
 
+#[cast_to]
 impl Statement for LetStatement {}
 
 
@@ -191,10 +256,18 @@ impl Node for ReturnStatement {
             return evaluated;
         }
 
-        Some(Box::new(ReturnValue{value: evaluated.unwrap()}))
+        Some(Box::new(ReturnValue { value: evaluated.unwrap() }))
+    }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        node.return_value = modifier.modify_expression(node.return_value);
+
+        modifier.apply(node.clone_node())
     }
 }
 
+#[cast_to]
 impl Statement for ReturnStatement {}
 
 impl Display for ReturnStatement {
@@ -225,8 +298,16 @@ impl Node for ExpressionStatement {
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval(Box::new(self.expression.as_node()), env)
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        node.expression = modifier.modify_expression(node.expression);
+
+        modifier.apply(node.clone_node())
+    }
 }
 
+#[cast_to]
 impl Statement for ExpressionStatement {}
 
 impl Display for ExpressionStatement {
@@ -257,8 +338,19 @@ impl Node for BlockStatement {
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_block_statement(self, env)
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        let statements = node.statements.clone();
+        for (i, statement) in statements.iter().enumerate() {
+            node.statements[i] = modifier.modify_statement(statement);
+        }
+
+        modifier.apply(node.clone_node())
+    }
 }
 
+#[cast_to]
 impl Statement for BlockStatement {}
 
 impl Display for BlockStatement {
@@ -293,8 +385,13 @@ impl Node for Identifier {
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_identifier(self, env)
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        modifier.apply(self.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for Identifier {
     fn value(&self) -> String {
         self.value.clone()
@@ -335,8 +432,16 @@ impl Node for PrefixExpression {
 
         evaluator.eval_prefix_expression(&self.operator, right.unwrap())
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        node.right = modifier.modify_expression(node.right);
+
+        modifier.apply(node.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for PrefixExpression {
     fn value(&self) -> String {
         "prefix".to_string()
@@ -373,18 +478,27 @@ impl Node for InfixExpression {
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         let left = evaluator.eval(Box::new(self.left.as_node()), env);
         if is_error(&left) {
-            return left
+            return left;
         }
 
         let right = evaluator.eval(Box::new(self.right.as_node()), env);
         if is_error(&right) {
-            return right
+            return right;
         }
 
         evaluator.eval_infix_expression(&self.operator, left.unwrap(), right.unwrap())
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        node.left = modifier.modify_expression(node.left);
+        node.right = modifier.modify_expression(node.right);
+
+        modifier.apply(node.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for InfixExpression {
     fn value(&self) -> String {
         "infix".to_string()
@@ -421,8 +535,21 @@ impl Node for IfExpression {
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_if_expression(self, env)
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        node.condition = modifier.modify_expression(node.condition);
+        node.consequence = modifier.modify_block_statement(node.consequence);
+        if node.alternative.is_some() {
+            node.alternative = Some(modifier.modify_block_statement(node.alternative.unwrap()))
+        }
+
+        modifier.apply(node.clone_node())
+
+    }
 }
 
+#[cast_to]
 impl Expression for IfExpression {
     fn value(&self) -> String {
         "if".to_string()
@@ -462,8 +589,13 @@ impl Node for IntegerLiteral {
     fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         Some(Box::new(Integer { value: self.value }))
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        modifier.apply(self.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for IntegerLiteral {
     fn value(&self) -> String {
         self.value.to_string()
@@ -498,8 +630,13 @@ impl Node for BooleanLiteral {
     fn visit(&self, evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.native_to_bool(self.value)
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        modifier.apply(self.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for BooleanLiteral {
     fn value(&self) -> String {
         self.value.to_string()
@@ -534,8 +671,13 @@ impl Node for StringLiteral {
     fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         Some(Box::new(StringE { value: self.value.clone() }))
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        modifier.apply(self.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for StringLiteral {
     fn value(&self) -> String {
         self.value.to_string()
@@ -569,10 +711,22 @@ impl Node for FunctionLiteral {
     }
 
     fn visit(&self, _evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
-        Some(Box::new(Function{parameters: self.parameters.clone(), body: self.body.clone(), env: env.clone() }))
+        Some(Box::new(Function { parameters: self.parameters.clone(), body: self.body.clone(), env: env.clone() }))
+    }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        let parameters = node.parameters.clone();
+        for (i, _) in parameters.iter().enumerate() {
+            node.parameters[i] = modifier.modify_identifier(&node.parameters[i]);
+        }
+        node.body = modifier.modify_block_statement(node.body);
+
+        modifier.apply(node.clone_node())
     }
 }
 
+#[cast_to]
 impl Expression for FunctionLiteral {
     fn value(&self) -> String {
         "fn".to_string()
@@ -611,12 +765,12 @@ impl Node for CallExpression {
 
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         if self.function.token_literal() == "quote" {
-            return evaluator.quote(self.arguments[0].clone_node())
+            return evaluator.quote(self.arguments[0].clone_node(), env);
         }
 
         let function = evaluator.eval(Box::new(self.function.as_node()), env);
         if is_error(&function) {
-            return function
+            return function;
         }
 
         let function = function.unwrap();
@@ -625,14 +779,19 @@ impl Node for CallExpression {
         if args.len() == 1 {
             let arg = args[0].clone();
             if is_error(&Some(arg.clone())) {
-                return Some(arg)
+                return Some(arg);
             }
         }
 
         evaluator.eval_function_call(function, args)
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        modifier.apply(self.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for CallExpression {
     fn value(&self) -> String {
         "call".to_string()
@@ -675,14 +834,24 @@ impl Node for ArrayLiteral {
         if elements.len() == 1 {
             let element = elements[0].clone();
             if is_error(&Some(element.clone())) {
-                return Some(element)
+                return Some(element);
             }
         }
 
-        Some(Box::new(Array{elements}))
+        Some(Box::new(Array { elements }))
+    }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        for (i, element) in node.elements.clone().iter().enumerate() {
+            node.elements[i] = modifier.modify_expression(element.clone());
+        }
+
+        modifier.apply(node.clone_node())
     }
 }
 
+#[cast_to]
 impl Expression for ArrayLiteral {
     fn value(&self) -> String {
         "fn".to_string()
@@ -730,10 +899,19 @@ impl Node for IndexExpression {
             return index;
         }
 
-        return evaluator.eval_index_expression(left.unwrap(), index.unwrap())
+        return evaluator.eval_index_expression(left.unwrap(), index.unwrap());
+    }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        node.left = modifier.modify_expression(node.left);
+        node.index = modifier.modify_expression(node.index);
+
+        modifier.apply(node.clone_node())
     }
 }
 
+#[cast_to]
 impl Expression for IndexExpression {
     fn value(&self) -> String {
         "fn".to_string()
@@ -768,8 +946,24 @@ impl Node for MapLiteral {
     fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_map_literal(self, env)
     }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+
+        let mut pairs = HashMap::new();
+        for (key, value) in node.pairs {
+            let key = modifier.modify_expression(key);
+            let value = modifier.modify_expression(value);
+            pairs.insert(key, value);
+        }
+
+        node.pairs = pairs;
+
+        modifier.apply(node.clone_node())
+    }
 }
 
+#[cast_to]
 impl Expression for MapLiteral {
     fn value(&self) -> String {
         "hash".to_string()
@@ -793,7 +987,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn string() {
+    fn test_to_string() {
         let program = Program {
             statements: vec![
                 Box::new(LetStatement {
@@ -811,5 +1005,184 @@ mod tests {
         };
 
         assert_eq!(format!("{}", program), "let myVar = anotherVar;");
+    }
+
+    #[test]
+    fn test_modify() {
+        let one: fn() -> Box<dyn Expression> = || { Box::new(IntegerLiteral { token: Token::new(TokenType::Integer, "1"), value: 1 }) };
+        let two: fn() -> Box<dyn Expression> = || { Box::new(IntegerLiteral { token: Token::new(TokenType::Integer, "2"), value: 2 }) };
+        let mut one_to_two = Box::new(|n: Box<dyn Node>| -> Box<dyn Node> {
+            let mut integer = match n.as_any().downcast_ref::<IntegerLiteral>() {
+                Some(integer) => integer.clone(),
+                None => return n.clone(),
+            };
+
+            if integer.value != 1 {
+                return n.clone();
+            }
+
+            integer.value = 2;
+            Box::new(integer.clone())
+        });
+        let mut modifier = ModifierImpl { modifier_fn: &mut one_to_two };
+
+        struct Test {
+            input: Box<dyn Node>,
+            expected: Box<dyn Node>,
+        }
+
+        let mut tests = vec![
+            Test { input: one().clone_node(), expected: two().clone_node() },
+            Test {
+                input: Box::new(Program {
+                    statements: vec![
+                        Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
+                    ]
+                }),
+                expected: Box::new(Program {
+                    statements: vec![
+                        Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
+                    ]
+                }),
+            },
+            Test {
+                input: Box::new(InfixExpression {
+                    token: Token::empty(),
+                    left: one(), operator: "+".to_string(), right: one()
+                }),
+                expected: Box::new(InfixExpression {
+                    token: Token::empty(),
+                    left: two(), operator: "+".to_string(), right: two()
+                }),
+            },
+            Test {
+                input: Box::new(PrefixExpression {
+                    token: Token::empty(),
+                    operator: "+".to_string(), right: one()
+                }),
+                expected: Box::new(PrefixExpression {
+                    token: Token::empty(),
+                    operator: "+".to_string(), right: two()
+                }),
+            },
+            Test {
+                input: Box::new(IndexExpression {
+                    token: Token::empty(),
+                    left: one(), index: one()
+                }),
+                expected: Box::new(IndexExpression {
+                    token: Token::empty(),
+                    left: two(), index: two()
+                }),
+            },
+            Test {
+                input: Box::new(IfExpression {
+                    token: Token::empty(),
+                    condition: one(),
+                    consequence: BlockStatement{
+                        token: Token::empty(),
+                        statements: vec![
+                        Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
+                    ]},
+                    alternative: Some(BlockStatement{
+                        token: Token::empty(),
+                        statements: vec![
+                            Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
+                        ]
+                    })
+                }),
+                expected: Box::new(IfExpression {
+                    token: Token::empty(),
+                    condition: two(),
+                    consequence: BlockStatement{
+                        token: Token::empty(),
+                        statements: vec![
+                        Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
+                    ]},
+                    alternative: Some(BlockStatement{
+                        token: Token::empty(),
+                        statements: vec![
+                            Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
+                        ]
+                    })
+                }),
+            },
+            Test {
+                input: Box::new(ReturnStatement {
+                    token: Token::empty(),
+                    return_value: one()
+                }),
+                expected: Box::new(ReturnStatement {
+                    token: Token::empty(),
+                    return_value: two()
+                }),
+            },
+            Test {
+                input: Box::new(LetStatement {
+                    token: Token::empty(),
+                    name: Identifier{token: Token::empty(), value: "one".to_string()},
+                    value: one()
+                }),
+                expected: Box::new(LetStatement {
+                    token: Token::empty(),
+                    name: Identifier{token: Token::empty(), value: "one".to_string()},
+                    value: two()
+                }),
+            },
+            Test {
+                input: Box::new(FunctionLiteral {
+                    token: Token::empty(),
+                    parameters: vec![],
+                    body: BlockStatement{
+                        token: Token::empty(),
+                        statements: vec![
+                            Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
+                        ]
+                    }
+                }),
+                expected: Box::new(FunctionLiteral {
+                    token: Token::empty(),
+                    parameters: vec![],
+                    body: BlockStatement{
+                        token: Token::empty(),
+                        statements: vec![
+                            Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
+                        ]
+                    }
+                }),
+            },
+            Test {
+                input: Box::new(ArrayLiteral {
+                    token: Token::empty(),
+                    elements: vec![one(), one()],
+                }),
+                expected: Box::new(ArrayLiteral {
+                    token: Token::empty(),
+                    elements: vec![two(), two()],
+                }),
+            },
+        ];
+
+        for test in &mut tests {
+            println!("*********");
+            let modified = modifier.modify(test.input.clone());
+
+            assert_eq!(modified.to_string(), test.expected.to_string());
+        }
+
+        let map_literal = Box::new(MapLiteral{
+            token: Token::empty(),
+            pairs: vec![
+                (one(), one())
+            ].into_iter().collect()
+        });
+
+        let modified = modifier.modify(map_literal.clone());//;
+        let map_literal = modified.as_any().downcast_ref::<MapLiteral>().unwrap();
+
+        for (key, value) in &map_literal.pairs {
+            assert_eq!(key.to_string(), "2".to_string());
+            assert_eq!(value.to_string(), "2".to_string());
+        }
     }
 }

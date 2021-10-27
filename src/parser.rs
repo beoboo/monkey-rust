@@ -639,8 +639,7 @@ mod tests {
             panic!("Not a \"let\" statement, got {}", stmt.token_literal())
         }
 
-        let let_statement = stmt.as_any().downcast_ref::<LetStatement>()
-            .unwrap_or_else(|| { panic!("Not a \"let\" statement") });
+        let let_statement = stmt as &LetStatement;
 
         if let_statement.name.value != name {
             panic!("\"let\" statement name value not {}, got {}", let_statement.name.value, name)
