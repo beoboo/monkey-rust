@@ -56,6 +56,13 @@ impl Token {
         }
     }
 
+    pub fn empty() -> Self {
+        Self {
+            token_type: TokenType::Illegal,
+            literal: "".to_string(),
+        }
+    }
+
     pub fn lookup_keyword(ident: &str) -> TokenType {
         match ident {
             "else" => TokenType::Else,

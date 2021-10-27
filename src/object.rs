@@ -1,11 +1,12 @@
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
-use crate::ast::{Identifier, BlockStatement, Node};
+use crate::ast::*;
 use crate::environment::Environment;
 use std::hash::{Hash, Hasher};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use crate::token::{TokenType, Token};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ObjectType {
@@ -56,6 +57,7 @@ pub trait Object : BaseObject {
     fn inspect(&self) -> String;
     fn eq(&self, other: &dyn Object) -> bool;
     fn as_any(&self) -> &dyn Any;
+    fn to_node(&self) -> Box<dyn Node>;
     fn map_key(&self) -> Option<MapKey>;
 }
 
@@ -96,6 +98,13 @@ impl Object for Integer {
         self
     }
 
+    fn to_node(&self) -> Box<dyn Node> {
+        Box::new(IntegerLiteral{
+            token: Token::new(TokenType::Integer, format!("{}", self.value).as_str()),
+            value: self.value
+        })
+    }
+
     fn map_key(&self) -> Option<MapKey> {
         Some(MapKey{object_type: ObjectType::Integer, value: self.value as u64})
     }
@@ -124,6 +133,13 @@ impl Object for Boolean {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn to_node(&self) -> Box<dyn Node> {
+        Box::new(BooleanLiteral{
+            token: Token::new(if self.value { TokenType::True } else { TokenType::False}, format!("{}", self.value).as_str()),
+            value: self.value
+        })
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -156,6 +172,13 @@ impl Object for StringE {
         self
     }
 
+    fn to_node(&self) -> Box<dyn Node> {
+        Box::new(StringLiteral{
+            token: Token::new(TokenType::String, self.value.as_str()),
+            value: self.value.clone()
+        })
+    }
+
     fn map_key(&self) -> Option<MapKey> {
         let mut hasher = DefaultHasher::new();
         self.value.hash(&mut hasher);
@@ -183,6 +206,10 @@ impl Object for Null {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn to_node(&self) -> Box<dyn Node> {
+        todo!()
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -213,6 +240,10 @@ impl Object for ReturnValue {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn to_node(&self) -> Box<dyn Node> {
+        todo!()
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -251,6 +282,10 @@ impl Object for Error {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn to_node(&self) -> Box<dyn Node> {
+        todo!()
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -297,6 +332,10 @@ impl Object for Function {
         self
     }
 
+    fn to_node(&self) -> Box<dyn Node> {
+        todo!()
+    }
+
     fn map_key(&self) -> Option<MapKey> {
         None
     }
@@ -322,6 +361,10 @@ impl Object for Builtin {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn to_node(&self) -> Box<dyn Node> {
+        todo!()
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -355,6 +398,10 @@ impl Object for Array {
         self
     }
 
+    fn to_node(&self) -> Box<dyn Node> {
+        todo!()
+    }
+
     fn map_key(&self) -> Option<MapKey> {
         None
     }
@@ -386,6 +433,10 @@ impl Object for Map {
         self
     }
 
+    fn to_node(&self) -> Box<dyn Node> {
+        todo!()
+    }
+
     fn map_key(&self) -> Option<MapKey> {
         None
     }
@@ -414,6 +465,13 @@ impl Object for Quote {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn to_node(&self) -> Box<dyn Node> {
+        match self.node.clone() {
+            Some(node) => node,
+            None => panic!("Invalid"),
+        }
     }
 
     fn map_key(&self) -> Option<MapKey> {

@@ -299,10 +299,37 @@ impl Evaluator {
         }
     }
 
-    pub fn quote(&self, node: Box<dyn Node>) -> Option<Box<dyn Object>> {
-        Some(Box::new(Quote{node: Some(node)}))
+    pub fn quote(&self, node: Box<dyn Node>, env: &mut Environment) -> Option<Box<dyn Object>> {
+        let node = self.eval_unquoted_calls(node, env);
+
+        Some(Box::new(Quote { node }))
+    }
+
+    fn eval_unquoted_calls(&self, node: Box<dyn Node>, env: &mut Environment) -> Option<Box<dyn Node>> {
+        let mut unquote_cls = Box::new(|n: Box<dyn Node>| -> Box<dyn Node> {
+            let call = match n.as_any().downcast_ref::<CallExpression>() {
+                Some(expression) => expression,
+                None => return n.clone()
+            };
+
+            if call.function.token_literal() != "unquote".to_string() {
+                return n.clone();
+            }
+
+            if call.arguments.len() != 1 {
+                return n.clone();
+            }
+
+            let object = self.eval(Box::new(call.arguments[0].as_node()), env).unwrap();
+            object.to_node()
+        });
+
+        let mut modifier = ModifierImpl { modifier_fn: &mut unquote_cls };
+
+        Some(modifier.modify(node.clone()))
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -778,6 +805,19 @@ addTwo(2);
             Test { input: "quote(5 + 8)", expected: "(5 + 8)" },
             Test { input: "quote(foobar)", expected: "foobar" },
             Test { input: "quote(foo + bar)", expected: "(foo + bar)" },
+            Test { input: "quote(unquote(4))", expected: "4" },
+            Test { input: "quote(unquote(4 + 4))", expected: "8" },
+            Test { input: "quote(8 + unquote(4 + 4))", expected: "(8 + 8)" },
+            Test { input: "quote(unquote(4 + 4) + 8)", expected: "(8 + 8)" },
+            Test { input: "quote(unquote(true))", expected: "true" },
+            Test { input: "quote(unquote(true == false))", expected: "false" },
+            Test { input: "quote(unquote(\"foo\"))", expected: "foo" },
+            Test { input: "quote(unquote(\"foo\" + \"bar\"))", expected: "foobar" },
+            Test { input: "quote(unquote(true == false))", expected: "false" },
+            Test { input: "quote(unquote(quote(4 + 4)))", expected: "(4 + 4)" },
+            Test { input: "let expr = quote(4 + 4); quote(unquote(4 + 4) + unquote(expr))", expected: "(8 + (4 + 4))" },
+            // Test { input: "quote(unquote(null))", expected: "null" },
+            // Test { input: "quote(unquote(return true))", expected: "true" },
         ];
 
         for test in tests {

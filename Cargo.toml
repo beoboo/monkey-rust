@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 users = "*"
+intertrait = "0.2"
+linkme = "0.2"
