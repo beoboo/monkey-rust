@@ -36,13 +36,10 @@ pub trait Modifier {
 
 impl<'a> Modifier for ModifierImpl<'a> {
     fn modify(&mut self, node: Box<dyn Node>) -> Box<dyn Node> {
-        println!("Modifying: {:?}", node);
-
         node.modify(self)
     }
 
     fn apply(&mut self, node: Box<dyn Node>) -> Box<dyn Node> {
-        println!("Applying: {:?}", node);
         (self.modifier_fn)(node.clone())
     }
 }

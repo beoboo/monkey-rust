@@ -24,7 +24,6 @@ impl Environment {
     }
 
     pub fn get(&self, key: &String) -> Option<&Box<dyn Object>> {
-        println!("Getting {}", key);
         match self.store.get(key) {
             Some(key) => Some(key),
             None => match &self.parent {
@@ -35,7 +34,6 @@ impl Environment {
     }
 
     pub fn set(&mut self, key: String, val: Box<dyn Object>) -> Option<Box<dyn Object>> {
-        println!("Setting {}", key);
         self.store.insert(key, val)
     }
 }

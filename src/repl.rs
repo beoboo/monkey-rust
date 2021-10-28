@@ -1,10 +1,10 @@
 use std::io::{Stdin, Stdout, Write};
 
-use crate::ast::Node;
 use crate::environment::Environment;
 use crate::evaluator::Evaluator;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use crate::macro_expander::MacroExpander;
 
 pub struct Repl {}
 
@@ -25,6 +25,9 @@ const MONKEY_FACE: &str = "            __,__
 
 impl Repl {
     pub fn start(input: Stdin, mut output: Stdout) {
+        let mut environment = Environment::new();
+        let mut macro_environment = Environment::new();
+
         loop {
             output.write(PROMPT.as_bytes()).ok();
             output.flush().ok();
@@ -35,7 +38,7 @@ impl Repl {
             let lexer = Lexer::new(line.as_str());
             let mut parser = Parser::new(lexer);
 
-            let program = match parser.parse_program() {
+            let mut program = match parser.parse_program() {
                 Some(program) => program,
                 None => { continue; }
             };
@@ -45,9 +48,13 @@ impl Repl {
                 continue;
             }
 
+            let expander = MacroExpander::new();
+            expander.define_macros(&mut program, &mut macro_environment);
+            let expanded = expander.expand_macros(&program, &mut macro_environment);
+
             let evaluator = Evaluator::new();
-            let mut environment = Environment::new();
-            match evaluator.eval(Box::new(program.as_node()), &mut environment) {
+
+            match evaluator.eval(Box::new(expanded.as_node()), &mut environment) {
                 Some(evaluated) => println!("{}", evaluated.inspect()),
                 None => {}
             }
