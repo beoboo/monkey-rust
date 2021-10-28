@@ -1,4 +1,4 @@
-use crate::object::{Object, Error, ObjectType, Integer, StringE, Array, NULL};
+use crate::object::{Array, Error, Integer, NULL, Object, ObjectType, StringE};
 
 pub fn len_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
     if args.len() != 1 {
@@ -32,7 +32,7 @@ pub fn first_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
     }
 
     if args[0].get_type() != ObjectType::Array {
-        return Some(Box::new(Error::new(format!("argument to \"first\" must be Array, got {:?}", args[0].get_type()))))
+        return Some(Box::new(Error::new(format!("argument to \"first\" must be Array, got {:?}", args[0].get_type()))));
     }
 
     let array = args[0].as_any().downcast_ref::<Array>().unwrap();
@@ -49,7 +49,7 @@ pub fn last_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
     }
 
     if args[0].get_type() != ObjectType::Array {
-        return Some(Box::new(Error::new(format!("argument to \"last\" must be Array, got {:?}", args[0].get_type()))))
+        return Some(Box::new(Error::new(format!("argument to \"last\" must be Array, got {:?}", args[0].get_type()))));
     }
 
     let array = args[0].as_any().downcast_ref::<Array>().unwrap();
@@ -67,14 +67,14 @@ pub fn rest_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
     }
 
     if args[0].get_type() != ObjectType::Array {
-        return Some(Box::new(Error::new(format!("argument to \"rest\" must be Array, got {:?}", args[0].get_type()))))
+        return Some(Box::new(Error::new(format!("argument to \"rest\" must be Array, got {:?}", args[0].get_type()))));
     }
 
     let array = args[0].as_any().downcast_ref::<Array>().unwrap();
     let length = array.elements.len();
     if length > 0 {
         let elements = array.elements[1..length].to_vec();
-        Some(Box::new(Array{elements}))
+        Some(Box::new(Array { elements }))
     } else {
         Some(Box::new(NULL))
     }
@@ -86,7 +86,7 @@ pub fn push_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
     }
 
     if args[0].get_type() != ObjectType::Array {
-        return Some(Box::new(Error::new(format!("argument to \"push\" must be Array, got {:?}", args[0].get_type()))))
+        return Some(Box::new(Error::new(format!("argument to \"push\" must be Array, got {:?}", args[0].get_type()))));
     }
 
     let array = args[0].as_any().downcast_ref::<Array>().unwrap();
@@ -94,5 +94,5 @@ pub fn push_builtin(args: Vec<Box<dyn Object>>) -> Option<Box<dyn Object>> {
     let mut elements = array.elements.clone();
     elements.push(item);
 
-    Some(Box::new(Array{elements}))
+    Some(Box::new(Array { elements }))
 }

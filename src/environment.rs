@@ -1,17 +1,18 @@
 use std::collections::HashMap;
+
 use crate::object::Object;
 
 #[derive(Debug, Clone)]
 pub struct Environment {
     store: HashMap<String, Box<dyn Object>>,
-    parent: Option<Box<Self>>
+    parent: Option<Box<Self>>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         Self {
             store: HashMap::new(),
-            parent: None
+            parent: None,
         }
     }
 

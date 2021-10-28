@@ -1,12 +1,13 @@
 use std::any::Any;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
+
 use crate::ast::*;
 use crate::environment::Environment;
-use std::hash::{Hash, Hasher};
-use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use crate::token::{TokenType, Token};
+use crate::token::{Token, TokenType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ObjectType {
@@ -15,6 +16,7 @@ pub enum ObjectType {
     Builtin,
     Error,
     Function,
+    Macro,
     Map,
     Integer,
     Null,
@@ -23,9 +25,9 @@ pub enum ObjectType {
     String,
 }
 
-pub const TRUE : Boolean = Boolean{value: true};
-pub const FALSE : Boolean = Boolean{value: false};
-pub const NULL : Null = Null{};
+pub const TRUE: Boolean = Boolean { value: true };
+pub const FALSE: Boolean = Boolean { value: false };
+pub const NULL: Null = Null {};
 
 type BuiltinFunction = fn(Vec<Box<dyn Object>>) -> Option<Box<dyn Object>>;
 
@@ -52,7 +54,7 @@ impl Debug for Box<dyn Object> {
     }
 }
 
-pub trait Object : BaseObject {
+pub trait Object: BaseObject {
     fn get_type(&self) -> ObjectType;
     fn inspect(&self) -> String;
     fn eq(&self, other: &dyn Object) -> bool;
@@ -99,14 +101,14 @@ impl Object for Integer {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        Box::new(IntegerLiteral{
+        Box::new(IntegerLiteral {
             token: Token::new(TokenType::Integer, format!("{}", self.value).as_str()),
-            value: self.value
+            value: self.value,
         })
     }
 
     fn map_key(&self) -> Option<MapKey> {
-        Some(MapKey{object_type: ObjectType::Integer, value: self.value as u64})
+        Some(MapKey { object_type: ObjectType::Integer, value: self.value as u64 })
     }
 }
 
@@ -136,14 +138,14 @@ impl Object for Boolean {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        Box::new(BooleanLiteral{
-            token: Token::new(if self.value { TokenType::True } else { TokenType::False}, format!("{}", self.value).as_str()),
-            value: self.value
+        Box::new(BooleanLiteral {
+            token: Token::new(if self.value { TokenType::True } else { TokenType::False }, format!("{}", self.value).as_str()),
+            value: self.value,
         })
     }
 
     fn map_key(&self) -> Option<MapKey> {
-        Some(MapKey{object_type: ObjectType::String, value: if self.value { 1 } else { 0 } })
+        Some(MapKey { object_type: ObjectType::String, value: if self.value { 1 } else { 0 } })
     }
 }
 
@@ -173,9 +175,9 @@ impl Object for StringE {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        Box::new(StringLiteral{
+        Box::new(StringLiteral {
             token: Token::new(TokenType::String, self.value.as_str()),
-            value: self.value.clone()
+            value: self.value.clone(),
         })
     }
 
@@ -184,7 +186,7 @@ impl Object for StringE {
         self.value.hash(&mut hasher);
         let hash = hasher.finish();
 
-        Some(MapKey{object_type: ObjectType::String, value: hash})
+        Some(MapKey { object_type: ObjectType::String, value: hash })
     }
 }
 
@@ -209,7 +211,7 @@ impl Object for Null {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        todo!()
+        panic!("Not implemented")
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -219,7 +221,7 @@ impl Object for Null {
 
 #[derive(Debug, Clone)]
 pub struct ReturnValue {
-    pub value: Box<dyn Object>
+    pub value: Box<dyn Object>,
 }
 
 impl Object for ReturnValue {
@@ -243,7 +245,7 @@ impl Object for ReturnValue {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        todo!()
+        panic!("Not implemented")
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -253,7 +255,7 @@ impl Object for ReturnValue {
 
 #[derive(Debug, Clone)]
 pub struct Error {
-    pub message: String
+    pub message: String,
 }
 
 impl Error {
@@ -285,7 +287,7 @@ impl Object for Error {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        todo!()
+        panic!("Not implemented")
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -318,12 +320,12 @@ impl Object for Function {
             Some(other) => {
                 for (idx, p) in self.parameters.iter().enumerate() {
                     if p.value != other.parameters[idx].value {
-                        return false
+                        return false;
                     }
                 }
 
                 self.body.to_string() == other.body.to_string()
-            },
+            }
             _ => false
         }
     }
@@ -333,7 +335,7 @@ impl Object for Function {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        todo!()
+        panic!("Not implemented")
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -364,7 +366,7 @@ impl Object for Builtin {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        todo!()
+        panic!("Not implemented")
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -399,7 +401,7 @@ impl Object for Array {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        todo!()
+        panic!("Not implemented")
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -409,7 +411,7 @@ impl Object for Array {
 
 #[derive(Debug, Clone)]
 pub struct Map {
-    pub pairs: HashMap<MapKey, Pair>
+    pub pairs: HashMap<MapKey, Pair>,
 }
 
 impl Object for Map {
@@ -434,7 +436,7 @@ impl Object for Map {
     }
 
     fn to_node(&self) -> Box<dyn Node> {
-        todo!()
+        panic!("Not implemented")
     }
 
     fn map_key(&self) -> Option<MapKey> {
@@ -444,7 +446,7 @@ impl Object for Map {
 
 #[derive(Debug, Clone)]
 pub struct Quote {
-    pub node: Option<Box<dyn Node>>
+    pub node: Option<Box<dyn Node>>,
 }
 
 impl Object for Quote {
@@ -454,7 +456,7 @@ impl Object for Quote {
 
     fn inspect(&self) -> String {
         format!("QUOTE({})", match &self.node {
-            Some (node) => node.to_string(),
+            Some(node) => node.to_string(),
             None => "".to_string()
         })
     }
@@ -479,10 +481,51 @@ impl Object for Quote {
     }
 }
 
-pub fn is_error(obj: &Option<Box<dyn Object>>) -> bool {
-    match obj {
-        Some(obj) => obj.get_type() == ObjectType::Error,
-        None => true
+#[derive(Debug, Clone)]
+pub struct Macro {
+    pub parameters: Vec<Identifier>,
+    pub body: BlockStatement,
+    pub env: Environment,
+}
+
+impl Object for Macro {
+    fn get_type(&self) -> ObjectType {
+        ObjectType::Macro
+    }
+
+    fn inspect(&self) -> String {
+        let mut params: Vec<String> = vec![];
+        for p in &self.parameters {
+            params.push(format!("{}", p))
+        }
+        format!("fn ({}) {{\n{}\n}}", params.join(", "), self.body)
+    }
+
+    fn eq(&self, other: &dyn Object) -> bool {
+        match other.as_any().downcast_ref::<Macro>() {
+            Some(other) => {
+                for (idx, p) in self.parameters.iter().enumerate() {
+                    if p.value != other.parameters[idx].value {
+                        return false;
+                    }
+                }
+
+                self.body.to_string() == other.body.to_string()
+            }
+            _ => false
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn to_node(&self) -> Box<dyn Node> {
+        panic!("Not implemented")
+    }
+
+    fn map_key(&self) -> Option<MapKey> {
+        None
     }
 }
 
@@ -492,11 +535,11 @@ mod tests {
 
     #[test]
     fn test_strings() {
-        let hello1 = StringE{value: "hello world".to_string()};
-        let hello2 = StringE{value: "hello world".to_string()};
+        let hello1 = StringE { value: "hello world".to_string() };
+        let hello2 = StringE { value: "hello world".to_string() };
 
-        let diff1 = StringE{value: "another world".to_string()};
-        let diff2 = StringE{value: "another world".to_string()};
+        let diff1 = StringE { value: "another world".to_string() };
+        let diff2 = StringE { value: "another world".to_string() };
 
         assert_eq!(hello1.map_key(), hello2.map_key());
         assert_eq!(diff1.map_key(), diff2.map_key());
@@ -505,11 +548,11 @@ mod tests {
 
     #[test]
     fn test_integers() {
-        let int1 = Integer{value: 1};
-        let int2 = Integer{value: 1};
+        let int1 = Integer { value: 1 };
+        let int2 = Integer { value: 1 };
 
-        let diff1 = Integer{value: 2};
-        let diff2 = Integer{value: 2};
+        let diff1 = Integer { value: 2 };
+        let diff2 = Integer { value: 2 };
 
         assert_eq!(int1.map_key(), int2.map_key());
         assert_eq!(diff1.map_key(), diff2.map_key());
@@ -518,11 +561,11 @@ mod tests {
 
     #[test]
     fn test_booleans() {
-        let bool1 = Boolean{value: true};
-        let bool2 = Boolean{value: true};
+        let bool1 = Boolean { value: true };
+        let bool2 = Boolean { value: true };
 
-        let diff1 = Boolean{value: false};
-        let diff2 = Boolean{value: false};
+        let diff1 = Boolean { value: false };
+        let diff2 = Boolean { value: false };
 
         assert_eq!(bool1.map_key(), bool2.map_key());
         assert_eq!(diff1.map_key(), diff2.map_key());

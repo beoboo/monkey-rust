@@ -1,16 +1,18 @@
 use std::any::Any;
-use std::fmt::{Display, Formatter, Debug};
-
-use crate::evaluator::Evaluator;
-use crate::object::{Integer, Object, ReturnValue, is_error, Function, StringE, Array};
-use crate::token::Token;
-use crate::environment::Environment;
 use std::collections::HashMap;
+use std::fmt::{Debug, Display, Formatter};
 use std::hash::{Hash, Hasher};
-use intertrait::*;
-use intertrait::cast::*;
 
-pub trait BaseNode : Any {
+use intertrait::*;
+
+use crate::environment::Environment;
+use crate::evaluator::Evaluator;
+use crate::object::{Array, Function, Integer, Object, ReturnValue, StringE};
+use crate::token::Token;
+use crate::utils::is_error;
+use crate::modifier::Modifier;
+
+pub trait BaseNode: Any {
     fn clone_node(&self) -> Box<dyn Node>;
 }
 
@@ -84,52 +86,6 @@ pub trait Statement: BaseStatement + Node {}
 
 pub trait Expression: BaseExpression + Node {
     fn value(&self) -> String;
-}
-
-pub type ModifierFn<'a> = dyn FnMut(Box<dyn Node>) -> Box<dyn Node> + 'a;
-
-//#[derive(Clone, Copy)]
-pub struct ModifierImpl<'a> {
-    pub modifier_fn: &'a mut ModifierFn<'a>,
-}
-
-pub trait Modifier {
-    fn modify(&mut self, node: Box<dyn Node>) -> Box<dyn Node>;
-
-    fn modify_expression(&mut self, expr: Box<dyn Expression>) -> Box<dyn Expression> {
-        let node = self.modify(expr.clone_node());
-        node.cast::<dyn Expression>().unwrap().clone() as Box<dyn Expression>
-    }
-
-    fn modify_statement(&mut self, stmt: &Box<dyn Statement>) -> Box<dyn Statement> {
-        let node = self.modify(stmt.clone_node());
-        node.cast::<dyn Statement>().unwrap().clone() as Box<dyn Statement>
-    }
-
-    fn modify_block_statement(&mut self, block: BlockStatement) -> BlockStatement {
-        let node = self.modify(block.clone_node());
-        node.as_any().downcast_ref::<BlockStatement>().unwrap().clone()
-    }
-
-    fn modify_identifier(&mut self, identifier: &Identifier) -> Identifier {
-        let node = self.modify(identifier.clone_node());
-        node.as_any().downcast_ref::<Identifier>().unwrap().clone()
-    }
-
-    fn apply(&mut self, node: Box<dyn Node>) -> Box<dyn Node>;
-}
-
-impl<'a> Modifier for ModifierImpl<'a> {
-    fn modify(&mut self, node: Box<dyn Node>) -> Box<dyn Node> {
-        println!("Modifying: {:?}", node);
-
-        node.modify(self)
-    }
-
-    fn apply(&mut self, node: Box<dyn Node>) -> Box<dyn Node> {
-        println!("Applying: {:?}", node);
-        (self.modifier_fn)(node.clone())
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -545,7 +501,6 @@ impl Node for IfExpression {
         }
 
         modifier.apply(node.clone_node())
-
     }
 }
 
@@ -980,11 +935,65 @@ impl Display for MapLiteral {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MacroLiteral {
+    pub token: Token,
+    pub parameters: Vec<Identifier>,
+    pub body: BlockStatement,
+}
+
+impl Node for MacroLiteral {
+    fn token_literal(&self) -> &str {
+        return self.token.literal.as_str();
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_node(&self) -> &dyn Node {
+        self
+    }
+
+    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
+        panic!("Not implemented")
+    }
+
+    fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
+        let mut node = self.clone();
+        let parameters = node.parameters.clone();
+        for (i, _) in parameters.iter().enumerate() {
+            node.parameters[i] = modifier.modify_identifier(&node.parameters[i]);
+        }
+        node.body = modifier.modify_block_statement(node.body);
+
+        modifier.apply(node.clone_node())
+    }
+}
+
+#[cast_to]
+impl Expression for MacroLiteral {
+    fn value(&self) -> String {
+        "fn".to_string()
+    }
+}
+
+impl Display for MacroLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut params = vec![];
+        for param in &self.parameters {
+            params.push(format!("{}", param));
+        }
+        write!(f, "{}({}){}", self.token_literal(), params.join(", "), self.body)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::token::TokenType;
 
     use super::*;
+    use crate::modifier::ModifierImpl;
 
     #[test]
     fn test_to_string() {
@@ -1048,107 +1057,117 @@ mod tests {
             Test {
                 input: Box::new(InfixExpression {
                     token: Token::empty(),
-                    left: one(), operator: "+".to_string(), right: one()
+                    left: one(),
+                    operator: "+".to_string(),
+                    right: one(),
                 }),
                 expected: Box::new(InfixExpression {
                     token: Token::empty(),
-                    left: two(), operator: "+".to_string(), right: two()
+                    left: two(),
+                    operator: "+".to_string(),
+                    right: two(),
                 }),
             },
             Test {
                 input: Box::new(PrefixExpression {
                     token: Token::empty(),
-                    operator: "+".to_string(), right: one()
+                    operator: "+".to_string(),
+                    right: one(),
                 }),
                 expected: Box::new(PrefixExpression {
                     token: Token::empty(),
-                    operator: "+".to_string(), right: two()
+                    operator: "+".to_string(),
+                    right: two(),
                 }),
             },
             Test {
                 input: Box::new(IndexExpression {
                     token: Token::empty(),
-                    left: one(), index: one()
+                    left: one(),
+                    index: one(),
                 }),
                 expected: Box::new(IndexExpression {
                     token: Token::empty(),
-                    left: two(), index: two()
+                    left: two(),
+                    index: two(),
                 }),
             },
             Test {
                 input: Box::new(IfExpression {
                     token: Token::empty(),
                     condition: one(),
-                    consequence: BlockStatement{
-                        token: Token::empty(),
-                        statements: vec![
-                        Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
-                    ]},
-                    alternative: Some(BlockStatement{
+                    consequence: BlockStatement {
                         token: Token::empty(),
                         statements: vec![
                             Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
-                        ]
-                    })
+                        ],
+                    },
+                    alternative: Some(BlockStatement {
+                        token: Token::empty(),
+                        statements: vec![
+                            Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
+                        ],
+                    }),
                 }),
                 expected: Box::new(IfExpression {
                     token: Token::empty(),
                     condition: two(),
-                    consequence: BlockStatement{
-                        token: Token::empty(),
-                        statements: vec![
-                        Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
-                    ]},
-                    alternative: Some(BlockStatement{
+                    consequence: BlockStatement {
                         token: Token::empty(),
                         statements: vec![
                             Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
-                        ]
-                    })
+                        ],
+                    },
+                    alternative: Some(BlockStatement {
+                        token: Token::empty(),
+                        statements: vec![
+                            Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
+                        ],
+                    }),
                 }),
             },
             Test {
                 input: Box::new(ReturnStatement {
                     token: Token::empty(),
-                    return_value: one()
+                    return_value: one(),
                 }),
                 expected: Box::new(ReturnStatement {
                     token: Token::empty(),
-                    return_value: two()
+                    return_value: two(),
                 }),
             },
             Test {
                 input: Box::new(LetStatement {
                     token: Token::empty(),
-                    name: Identifier{token: Token::empty(), value: "one".to_string()},
-                    value: one()
+                    name: Identifier { token: Token::empty(), value: "one".to_string() },
+                    value: one(),
                 }),
                 expected: Box::new(LetStatement {
                     token: Token::empty(),
-                    name: Identifier{token: Token::empty(), value: "one".to_string()},
-                    value: two()
+                    name: Identifier { token: Token::empty(), value: "one".to_string() },
+                    value: two(),
                 }),
             },
             Test {
                 input: Box::new(FunctionLiteral {
                     token: Token::empty(),
                     parameters: vec![],
-                    body: BlockStatement{
+                    body: BlockStatement {
                         token: Token::empty(),
                         statements: vec![
                             Box::new(ExpressionStatement { token: Token::empty(), expression: one() })
-                        ]
-                    }
+                        ],
+                    },
                 }),
                 expected: Box::new(FunctionLiteral {
                     token: Token::empty(),
                     parameters: vec![],
-                    body: BlockStatement{
+                    body: BlockStatement {
                         token: Token::empty(),
                         statements: vec![
                             Box::new(ExpressionStatement { token: Token::empty(), expression: two() })
-                        ]
-                    }
+                        ],
+                    },
                 }),
             },
             Test {
@@ -1170,11 +1189,11 @@ mod tests {
             assert_eq!(modified.to_string(), test.expected.to_string());
         }
 
-        let map_literal = Box::new(MapLiteral{
+        let map_literal = Box::new(MapLiteral {
             token: Token::empty(),
             pairs: vec![
                 (one(), one())
-            ].into_iter().collect()
+            ].into_iter().collect(),
         });
 
         let modified = modifier.modify(map_literal.clone());//;
