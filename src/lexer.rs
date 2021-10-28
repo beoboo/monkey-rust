@@ -31,7 +31,7 @@ impl Lexer {
                 } else {
                     self.new_token(TokenType::Assign, ch)
                 }
-            },
+            }
             '!' => {
                 if self.peek_next() == '=' {
                     let next = self.read_next();
@@ -42,7 +42,7 @@ impl Lexer {
                 } else {
                     self.new_token(TokenType::Bang, ch)
                 }
-            },
+            }
             '+' => self.new_token(TokenType::Plus, ch),
             '-' => self.new_token(TokenType::Minus, ch),
             '/' => self.new_token(TokenType::Slash, ch),
@@ -131,7 +131,7 @@ impl Lexer {
             ch = self.read_next();
         }
 
-        self.input[position..self.position-1].as_ref()
+        self.input[position..self.position - 1].as_ref()
     }
 
     fn read_char(&self, position: usize) -> char {
@@ -218,6 +218,7 @@ if (5 < 10) {
 \"foo bar\"\
 [1, 2]
 {\"foo\": \"bar\"}
+macro(x, y) { x + y };
 ";
 
         let expected = vec![
@@ -306,6 +307,18 @@ if (5 < 10) {
             Token::new(TokenType::Colon, ":"),
             Token::new(TokenType::String, "bar"),
             Token::new(TokenType::RBrace, "}"),
+            Token::new(TokenType::Macro, "macro"),
+            Token::new(TokenType::LParen, "("),
+            Token::new(TokenType::Ident, "x"),
+            Token::new(TokenType::Comma, ","),
+            Token::new(TokenType::Ident, "y"),
+            Token::new(TokenType::RParen, ")"),
+            Token::new(TokenType::LBrace, "{"),
+            Token::new(TokenType::Ident, "x"),
+            Token::new(TokenType::Plus, "+"),
+            Token::new(TokenType::Ident, "y"),
+            Token::new(TokenType::RBrace, "}"),
+            Token::new(TokenType::Semicolon, ";"),
             Token::new(TokenType::EOF, ""),
         ];
 

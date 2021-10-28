@@ -1,9 +1,10 @@
 use std::io::{Stdin, Stdout, Write};
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-use crate::evaluator::Evaluator;
+
 use crate::ast::Node;
 use crate::environment::Environment;
+use crate::evaluator::Evaluator;
+use crate::lexer::Lexer;
+use crate::parser::Parser;
 
 pub struct Repl {}
 
@@ -29,14 +30,14 @@ impl Repl {
             output.flush().ok();
 
             let mut line = String::new();
-            input.read_line(&mut line).map_err(|_| { return}).ok();
+            input.read_line(&mut line).map_err(|_| { return; }).ok();
 
             let lexer = Lexer::new(line.as_str());
             let mut parser = Parser::new(lexer);
 
             let program = match parser.parse_program() {
                 Some(program) => program,
-                None => { continue }
+                None => { continue; }
             };
 
             if parser.errors.len() > 0 {

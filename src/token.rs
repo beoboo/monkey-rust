@@ -22,6 +22,7 @@ pub enum TokenType {
     Let,
     LParen,
     Lt,
+    Macro,
     Minus,
     NotEq,
     Plus,
@@ -39,7 +40,7 @@ pub enum TokenType {
 impl fmt::Display for TokenType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
-   }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -70,6 +71,7 @@ impl Token {
             "fn" => TokenType::Function,
             "if" => TokenType::If,
             "let" => TokenType::Let,
+            "macro" => TokenType::Macro,
             "return" => TokenType::Return,
             "true" => TokenType::True,
             _ => TokenType::Ident

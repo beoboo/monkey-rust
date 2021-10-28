@@ -65,6 +65,7 @@ impl Parser {
         parser.register_prefix(TokenType::Function, Parser::parse_function_literal);
         parser.register_prefix(TokenType::LBracket, Parser::parse_array_literal);
         parser.register_prefix(TokenType::LBrace, Parser::parse_map_literal);
+        parser.register_prefix(TokenType::Macro, Parser::parse_macro_literal);
 
         parser.register_infix(TokenType::Plus, Parser::parse_infix_expression);
         parser.register_infix(TokenType::Minus, Parser::parse_infix_expression);
@@ -206,7 +207,7 @@ impl Parser {
             }
         };
 
-        let mut left_expr = prefix(self);
+        let mut left_expr: Option<Box<dyn Expression>> = prefix(self);
 
         while !self.next_token_is(TokenType::Semicolon) && precedence < self.next_precedence() {
             let token_type = self.next_token.token_type;
@@ -310,7 +311,7 @@ impl Parser {
             return None;
         }
 
-        let parameters = self.parse_function_parameters();
+        let parameters = self.parse_parameters();
 
         if !self.expect_next(TokenType::LBrace) {
             return None;
@@ -325,7 +326,7 @@ impl Parser {
         }))
     }
 
-    fn parse_function_parameters(&mut self) -> Vec<Identifier> {
+    fn parse_parameters(&mut self) -> Vec<Identifier> {
         fn _build_identifier(token: Token) -> Identifier {
             Identifier {
                 token: token.clone(),
@@ -388,9 +389,9 @@ impl Parser {
         while !self.next_token_is(TokenType::RBrace) {
             self.next_token();
 
-                let key = self.parse_expression(Precedence::Lowest)?;
+            let key = self.parse_expression(Precedence::Lowest)?;
             if !self.expect_next(TokenType::Colon) {
-                        return None
+                return None;
             }
 
             self.next_token();
@@ -398,12 +399,12 @@ impl Parser {
             pairs.insert(key, value);
 
             if !self.next_token_is(TokenType::RBrace) && !self.expect_next(TokenType::Comma) {
-                        return None
+                return None;
             }
         }
 
         if !self.expect_next(TokenType::RBrace) {
-            return None
+            return None;
         }
 
         Some(Box::new(MapLiteral {
@@ -573,6 +574,27 @@ impl Parser {
         }))
     }
 
+    fn parse_macro_literal(&mut self) -> Option<Box<dyn Expression>> {
+        let token = self.cur_token.clone();
+        if !self.expect_next(TokenType::LParen) {
+            return None;
+        }
+
+        let parameters = self.parse_parameters();
+
+        if !self.expect_next(TokenType::LBrace) {
+            return None;
+        }
+
+        let body = self.parse_block_statement();
+
+        Some(Box::new(MacroLiteral {
+            token,
+            parameters,
+            body,
+        }))
+    }
+
     fn cur_token_is(&self, token_type: TokenType) -> bool {
         self.cur_token.token_type == token_type
     }
@@ -618,8 +640,9 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ops::Deref;
+
+    use super::*;
 
     #[test]
     fn parse_let_statement() {
@@ -930,7 +953,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_function_parameters() {
+    fn parse_parameters() {
         struct Test<'a> {
             input: &'a str,
             expected: Vec<&'a str>,
@@ -1165,11 +1188,43 @@ mod tests {
             let literal = key.as_any().downcast_ref::<StringLiteral>()
                 .unwrap_or_else(|| { panic!("Not a string literal") });
 
-            let assert_fn = expected.get(literal.to_string().as_str()).unwrap_or_else(|| { panic!("No assert function for {}", literal)});
+            let assert_fn = expected.get(literal.to_string().as_str()).unwrap_or_else(|| { panic!("No assert function for {}", literal) });
 
             assert_fn(value.deref());
         }
     }
+
+    #[test]
+    fn parse_macro_literal() {
+        let input = "macro(x, y) { x + y; }";
+
+        let program = build_program(input);
+
+        assert_program_statements(&program, 1);
+
+        let stmt = parse_expression_statement(&*program.statements[0]);
+
+        let macro_ = stmt.expression.as_any().downcast_ref::<MacroLiteral>()
+            .unwrap_or_else(|| { panic!("Not a macro literal") });
+
+        if macro_.parameters.len() != 2 {
+            panic!("Function has not {} parameters, got {}", 2, macro_.parameters.len())
+        }
+
+        assert_identifier(&macro_.parameters[0], "x");
+        assert_identifier(&macro_.parameters[1], "y");
+
+        let body = &macro_.body;
+
+        if body.statements.len() != 1 {
+            panic!("Body has not {} statements, got {}", 1, body.statements.len())
+        }
+
+        let body_stmt = parse_expression_statement(&*body.statements[0]);
+
+        assert_infix_expression(&*body_stmt.expression, "x", "+", "y");
+    }
+
 
     fn assert_block_statement(block_stmt: &BlockStatement, count: usize, ident: &str) {
         if block_stmt.statements.len() != count {

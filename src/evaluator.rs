@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::ast::*;
+use crate::builtins::*;
 use crate::environment::Environment;
 use crate::object::*;
-use crate::builtins::*;
+use crate::utils::is_error;
+use crate::modifier::{ModifierImpl, Modifier};
 
 pub struct Evaluator {
     builtins: HashMap<String, Builtin>,
@@ -329,7 +331,6 @@ impl Evaluator {
         Some(modifier.modify(node.clone()))
     }
 }
-
 
 #[cfg(test)]
 mod tests {

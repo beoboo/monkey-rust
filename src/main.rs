@@ -13,6 +13,9 @@ mod object;
 mod evaluator;
 mod environment;
 mod builtins;
+mod macro_expander;
+mod utils;
+mod modifier;
 
 fn main() {
     let username = get_current_username().unwrap();
