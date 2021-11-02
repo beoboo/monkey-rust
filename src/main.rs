@@ -16,6 +16,11 @@ mod builtins;
 mod macro_expander;
 mod utils;
 mod modifier;
+mod op_code;
+mod compiler;
+mod assembler;
+mod disassembler;
+mod vm;
 
 fn main() {
     let username = get_current_username().unwrap();

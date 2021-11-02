@@ -1,5 +1,6 @@
 use crate::object::*;
 use crate::ast::{Statement, LetStatement, MacroLiteral};
+use crate::op_code::Byte;
 
 pub fn is_error(obj: &Option<Box<dyn Object>>) -> bool {
     match obj {
@@ -15,4 +16,10 @@ pub fn is_macro_definition(node: &Box<dyn Statement>) -> bool {
     };
 
     let_statement.value.as_any().downcast_ref::<MacroLiteral>().is_some()
+}
+
+pub fn from_u16(data: &[Byte]) -> u16 {
+    let upper = (data[0] as u16) << 8;
+    let lower = data[1] as u16;
+    upper + lower
 }

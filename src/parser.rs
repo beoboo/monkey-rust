@@ -333,7 +333,6 @@ impl Parser {
                 value: token.literal,
             }
         }
-        ;
 
         let mut identifiers = vec![];
 

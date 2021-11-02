@@ -14,7 +14,7 @@ pub struct Evaluator {
 
 
 impl Evaluator {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let builtins: HashMap<String, Builtin> = vec![
             ("len".to_string(), Builtin { function: len_builtin }),
             ("puts".to_string(), Builtin { function: puts_builtin }),
@@ -31,7 +31,7 @@ impl Evaluator {
     }
 
     pub fn eval(&self, node: Box<&dyn Node>, env: &mut Environment) -> Option<Box<dyn Object>> {
-        node.visit(self, env)
+        node.eval(self, env)
     }
 
     pub fn eval_program(&self, program: &Program, env: &mut Environment) -> Option<Box<dyn Object>> {

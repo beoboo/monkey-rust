@@ -11,6 +11,8 @@ use crate::object::{Array, Function, Integer, Object, ReturnValue, StringE};
 use crate::token::Token;
 use crate::utils::is_error;
 use crate::modifier::Modifier;
+use crate::compiler::{Compiler, CompilerResult};
+use crate::op_code::OpCode;
 
 pub trait BaseNode: Any {
     fn clone_node(&self) -> Box<dyn Node>;
@@ -78,7 +80,8 @@ pub trait Node: BaseNode + Debug + Display + CastFrom {
     fn token_literal(&self) -> &str;
     fn as_any(&self) -> &dyn Any;
     fn as_node(&self) -> &dyn Node;
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>>;
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>>;
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult;
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node>;
 }
 
@@ -110,8 +113,12 @@ impl Node for Program {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_program(self, env)
+    }
+
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile_program(self)
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -156,7 +163,7 @@ impl Node for LetStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         let evaluated = evaluator.eval(Box::new(self.value.as_node()), env);
         if is_error(&evaluated) {
             return evaluated;
@@ -167,6 +174,10 @@ impl Node for LetStatement {
         env.set(self.name.value.clone(), evaluated);
 
         None
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -206,13 +217,17 @@ impl Node for ReturnStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         let evaluated = evaluator.eval(Box::new(self.return_value.as_node()), env);
         if is_error(&evaluated) {
             return evaluated;
         }
 
         Some(Box::new(ReturnValue { value: evaluated.unwrap() }))
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -251,8 +266,12 @@ impl Node for ExpressionStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval(Box::new(self.expression.as_node()), env)
+    }
+
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile(self.expression.clone_node())
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -291,8 +310,12 @@ impl Node for BlockStatement {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_block_statement(self, env)
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -338,8 +361,12 @@ impl Node for Identifier {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_identifier(self, env)
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -380,13 +407,17 @@ impl Node for PrefixExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         let right = evaluator.eval(Box::new(self.right.as_node()), env);
         if is_error(&right) {
             return right;
         }
 
         evaluator.eval_prefix_expression(&self.operator, right.unwrap())
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -431,7 +462,7 @@ impl Node for InfixExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         let left = evaluator.eval(Box::new(self.left.as_node()), env);
         if is_error(&left) {
             return left;
@@ -443,6 +474,18 @@ impl Node for InfixExpression {
         }
 
         evaluator.eval_infix_expression(&self.operator, left.unwrap(), right.unwrap())
+    }
+
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile(self.left.clone_node())?;
+        compiler.compile(self.right.clone_node())?;
+
+        match self.operator.as_str() {
+            "+" => compiler.emit(OpCode::OpAdd, vec![]),
+            _ => return Err(format!("Unknown operator: {}", self.operator))
+        };
+
+        Ok(())
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -488,8 +531,12 @@ impl Node for IfExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_if_expression(self, env)
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -541,8 +588,15 @@ impl Node for IntegerLiteral {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         Some(Box::new(Integer { value: self.value }))
+    }
+
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        let integer = Box::new(Integer { value: self.value });
+        let pos = compiler.add_constant(integer);
+        compiler.emit(OpCode::OpConstant, vec![pos]);
+        Ok(())
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -582,8 +636,12 @@ impl Node for BooleanLiteral {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.native_to_bool(self.value)
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -623,8 +681,12 @@ impl Node for StringLiteral {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         Some(Box::new(StringE { value: self.value.clone() }))
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -665,8 +727,12 @@ impl Node for FunctionLiteral {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, _evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         Some(Box::new(Function { parameters: self.parameters.clone(), body: self.body.clone(), env: env.clone() }))
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -718,7 +784,7 @@ impl Node for CallExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         if self.function.token_literal() == "quote" {
             return evaluator.quote(self.arguments[0].clone_node(), env);
         }
@@ -739,6 +805,10 @@ impl Node for CallExpression {
         }
 
         evaluator.eval_function_call(function, args)
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -783,7 +853,7 @@ impl Node for ArrayLiteral {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         let elements = evaluator.eval_expressions(self.elements.clone(), env);
 
         if elements.len() == 1 {
@@ -794,6 +864,10 @@ impl Node for ArrayLiteral {
         }
 
         Some(Box::new(Array { elements }))
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -843,7 +917,7 @@ impl Node for IndexExpression {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         let left = evaluator.eval(Box::new(self.left.as_node()), env);
         if is_error(&left) {
             return left;
@@ -855,6 +929,10 @@ impl Node for IndexExpression {
         }
 
         return evaluator.eval_index_expression(left.unwrap(), index.unwrap());
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -898,8 +976,12 @@ impl Node for MapLiteral {
         self
     }
 
-    fn visit(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, evaluator: &Evaluator, env: &mut Environment) -> Option<Box<dyn Object>> {
         evaluator.eval_map_literal(self, env)
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -955,8 +1037,12 @@ impl Node for MacroLiteral {
         self
     }
 
-    fn visit(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
+    fn eval(&self, _evaluator: &Evaluator, _env: &mut Environment) -> Option<Box<dyn Object>> {
         panic!("Not implemented")
+    }
+
+    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
+        todo!()
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -1183,7 +1269,6 @@ mod tests {
         ];
 
         for test in &mut tests {
-            println!("*********");
             let modified = modifier.modify(test.input.clone());
 
             assert_eq!(modified.to_string(), test.expected.to_string());
