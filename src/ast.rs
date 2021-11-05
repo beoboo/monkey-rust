@@ -271,7 +271,10 @@ impl Node for ExpressionStatement {
     }
 
     fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
-        compiler.compile(self.expression.clone_node())
+        compiler.compile(self.expression.clone_node())?;
+        compiler.emit(OpCode::OpPop, vec![]);
+
+        Ok(())
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -416,8 +419,16 @@ impl Node for PrefixExpression {
         evaluator.eval_prefix_expression(&self.operator, right.unwrap())
     }
 
-    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
-        todo!()
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile(self.right.clone_node())?;
+
+        match self.operator.as_str() {
+            "!" => compiler.emit(OpCode::OpBang, vec![]),
+            "-" => compiler.emit(OpCode::OpMinus, vec![]),
+            _ => return Err(format!("Unknown operator: {}", self.operator))
+        };
+
+        Ok(())
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -477,11 +488,25 @@ impl Node for InfixExpression {
     }
 
     fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        if self.operator == "<" {
+            compiler.compile(self.right.clone_node())?;
+            compiler.compile(self.left.clone_node())?;
+            compiler.emit(OpCode::OpGreaterThan, vec![]);
+
+            return Ok(())
+        }
+
         compiler.compile(self.left.clone_node())?;
         compiler.compile(self.right.clone_node())?;
 
         match self.operator.as_str() {
             "+" => compiler.emit(OpCode::OpAdd, vec![]),
+            "-" => compiler.emit(OpCode::OpSub, vec![]),
+            "*" => compiler.emit(OpCode::OpMul, vec![]),
+            "/" => compiler.emit(OpCode::OpDiv, vec![]),
+            ">" => compiler.emit(OpCode::OpGreaterThan, vec![]),
+            "==" => compiler.emit(OpCode::OpEqual, vec![]),
+            "!=" => compiler.emit(OpCode::OpNotEqual, vec![]),
             _ => return Err(format!("Unknown operator: {}", self.operator))
         };
 
@@ -640,8 +665,9 @@ impl Node for BooleanLiteral {
         evaluator.native_to_bool(self.value)
     }
 
-    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
-        todo!()
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.emit(if self.value { OpCode::OpTrue } else { OpCode::OpFalse}, vec![]);
+        Ok(())
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {

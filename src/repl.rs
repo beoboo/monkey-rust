@@ -1,6 +1,6 @@
 use std::io::{Stdin, Stdout, Write};
 
-use clap::{clap_app, App, Arg};
+use clap::{App, Arg};
 
 use crate::compiler::Compiler;
 use crate::environment::Environment;
@@ -85,7 +85,7 @@ impl Repl {
                     }
                 }
 
-                let top = vm.top().unwrap();
+                let top = vm.last_top.unwrap();
                 println!("{}", top.inspect())
             } else {
                 let evaluator = Evaluator::new();

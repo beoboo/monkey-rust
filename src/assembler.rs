@@ -12,10 +12,12 @@ impl Assembler {
     }
 
     pub fn assemble(&self, op_code: OpCode, operands: Vec<u32>) -> Instructions {
+        // println!("{:?}", op_code);
         let byte = op_code as Byte;
         let definition = match self.definitions.get(&byte) {
             Some(definition) => definition,
-            None => return vec![]
+            // None => return vec![]
+            None => panic!("Undefined op code: {:?}", op_code)
         };
 
         let mut width = 1;
@@ -38,6 +40,8 @@ impl Assembler {
                 _ => panic!("Invalid operation width")
             }
         }
+        //
+        // println!("Instruction: {}", instructions.len());
 
         instructions
     }

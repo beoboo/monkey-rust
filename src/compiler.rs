@@ -82,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn test_integer_arithmetic() {
+    fn test_integers() {
         let assembler = Assembler::new(OpCodes::new());
         let tests = vec![
             TestCase{
@@ -91,9 +91,153 @@ mod tests {
                     assembler.assemble(OpCode::OpConstant, vec![0]),
                     assembler.assemble(OpCode::OpConstant, vec![1]),
                     assembler.assemble(OpCode::OpAdd, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
                 ],
                 expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
-            }
+            },
+            TestCase{
+                input: "1; 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
+            },
+            TestCase{
+                input: "1 - 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpSub, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
+            },
+            TestCase{
+                input: "1 * 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpMul, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
+            },
+            TestCase{
+                input: "1 / 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpDiv, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
+            },
+            TestCase{
+                input: "-1",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpMinus, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1})],
+            },
+        ];
+
+        run_tests(tests)
+    }
+
+    #[test]
+    fn test_booleans() {
+        let assembler = Assembler::new(OpCodes::new());
+        let tests = vec![
+            TestCase{
+                input: "true",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpTrue, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![],
+            },
+            TestCase{
+                input: "false",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpFalse, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![],
+            },
+            TestCase{
+                input: "1 > 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpGreaterThan, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
+            },
+            TestCase{
+                input: "1 < 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpGreaterThan, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 2}), Box::new(Integer{value: 1})],
+            },
+            TestCase{
+                input: "1 == 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpEqual, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
+            },
+            TestCase{
+                input: "1 != 2",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpNotEqual, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![Box::new(Integer{value: 1}), Box::new(Integer{value: 2})],
+            },
+            TestCase{
+                input: "true == false",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpTrue, vec![]),
+                    assembler.assemble(OpCode::OpFalse, vec![]),
+                    assembler.assemble(OpCode::OpEqual, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![],
+            },
+            TestCase{
+                input: "true != false",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpTrue, vec![]),
+                    assembler.assemble(OpCode::OpFalse, vec![]),
+                    assembler.assemble(OpCode::OpNotEqual, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![],
+            },
+            TestCase{
+                input: "!true",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpTrue, vec![]),
+                    assembler.assemble(OpCode::OpBang, vec![]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![],
+            },
         ];
 
         run_tests(tests)
@@ -104,6 +248,9 @@ mod tests {
             let program = parse(t.input);
             let mut compiler = Compiler::new();
             let error = compiler.compile(program);
+            if error.is_err() {
+                panic!("Error: {:?}", error.unwrap())
+            }
             assert!(error.is_ok());
 
             let bytecode = compiler.bytecode();

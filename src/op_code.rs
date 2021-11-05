@@ -1,26 +1,30 @@
 use std::collections::HashMap;
+use num_derive::FromPrimitive;
 
 pub type Byte = u8;
 
 pub type Instructions = Vec<Byte>;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
 pub enum OpCode {
     OpConstant = 0,
+    OpPop,
     OpAdd,
+    OpSub,
+    OpMul,
+    OpDiv,
+    OpTrue,
+    OpFalse,
+    OpEqual,
+    OpNotEqual,
+    OpGreaterThan,
+    OpMinus,
+    OpBang,
+
     Invalid = 255,
 }
 
-impl OpCode {
-    pub fn from_byte(src: Byte) -> Self {
-        match src {
-            0 => Self::OpConstant,
-            1 => Self::OpAdd,
-            _ => panic!("Cannot convert from {}", src)
-        }
-    }
-}
 pub struct Definition {
     pub name: String,
     pub operand_widths: Vec<u8>,
@@ -40,7 +44,18 @@ impl OpCodes {
     pub fn new() -> Self {
         let definitions: HashMap<Byte, Definition> = vec![
             (OpCode::OpConstant as Byte, Definition::new("OpConstant".into(), vec![2])),
+            (OpCode::OpPop as Byte, Definition::new("OpPop".into(), vec![])),
             (OpCode::OpAdd as Byte, Definition::new("OpAdd".into(), vec![])),
+            (OpCode::OpSub as Byte, Definition::new("OpSub".into(), vec![])),
+            (OpCode::OpMul as Byte, Definition::new("OpMul".into(), vec![])),
+            (OpCode::OpDiv as Byte, Definition::new("OpDiv".into(), vec![])),
+            (OpCode::OpTrue as Byte, Definition::new("OpTrue".into(), vec![])),
+            (OpCode::OpFalse as Byte, Definition::new("OpFalse".into(), vec![])),
+            (OpCode::OpEqual as Byte, Definition::new("OpEqual".into(), vec![])),
+            (OpCode::OpNotEqual as Byte, Definition::new("OpNotEqual".into(), vec![])),
+            (OpCode::OpGreaterThan as Byte, Definition::new("OpGreaterThan".into(), vec![])),
+            (OpCode::OpMinus as Byte, Definition::new("OpMinus".into(), vec![])),
+            (OpCode::OpBang as Byte, Definition::new("OpBang".into(), vec![])),
         ].into_iter().collect();
 
         Self {
