@@ -6,7 +6,7 @@ pub type Byte = u8;
 pub type Instructions = Vec<Byte>;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, FromPrimitive)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq)]
 pub enum OpCode {
     OpConstant = 0,
     OpPop,
@@ -21,6 +21,9 @@ pub enum OpCode {
     OpGreaterThan,
     OpMinus,
     OpBang,
+    OpJump,
+    OpJumpNotTruthy,
+    OpNull,
 
     Invalid = 255,
 }
@@ -56,6 +59,9 @@ impl OpCodes {
             (OpCode::OpGreaterThan as Byte, Definition::new("OpGreaterThan".into(), vec![])),
             (OpCode::OpMinus as Byte, Definition::new("OpMinus".into(), vec![])),
             (OpCode::OpBang as Byte, Definition::new("OpBang".into(), vec![])),
+            (OpCode::OpJump as Byte, Definition::new("OpJump".into(), vec![2])),
+            (OpCode::OpJumpNotTruthy as Byte, Definition::new("OpJumpNotTruthy".into(), vec![2])),
+            (OpCode::OpNull as Byte, Definition::new("OpNull".into(), vec![])),
         ].into_iter().collect();
 
         Self {

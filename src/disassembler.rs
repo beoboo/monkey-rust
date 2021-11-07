@@ -25,7 +25,7 @@ impl Disassembler {
                 .unwrap_or_else(|| panic!("Definition not found for {}", instructions[offset]));
 
             let (operands, read) = self.read_operands(definition, &instructions[(offset + 1)..]);
-            println!("offset: {}, read: {}", offset, read);
+            // println!("offset: {}, read: {}", offset, read);
 
             result.push_str(format!("{:04} {}", offset, self.format_instruction(definition, operands)).as_str());
             offset += 1 + read;

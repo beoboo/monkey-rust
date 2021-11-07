@@ -118,7 +118,7 @@ impl Node for Program {
     }
 
     fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
-        compiler.compile_program(self)
+        compiler.compile_statements(&self.statements)
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -317,8 +317,8 @@ impl Node for BlockStatement {
         evaluator.eval_block_statement(self, env)
     }
 
-    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
-        todo!()
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile_statements(&self.statements)
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -560,8 +560,31 @@ impl Node for IfExpression {
         evaluator.eval_if_expression(self, env)
     }
 
-    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
-        todo!()
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile(self.condition.clone_node())?;
+        let jump_not_truthy_pos = compiler.emit(OpCode::OpJumpNotTruthy, vec![9999]);
+        compiler.compile(self.consequence.clone_node())?;
+
+        compiler.pop_last_pop_instruction();
+
+        let jump_pos = compiler.emit(OpCode::OpJump, vec![9999]);
+        let after_consequence_pos = compiler.instructions.len();
+        compiler.change_operand(jump_not_truthy_pos, after_consequence_pos as u32);
+
+        match &self.alternative {
+            Some(alternative) => {
+                compiler.compile(alternative.clone_node())?;
+                compiler.pop_last_pop_instruction();
+            }
+            None => {
+                compiler.emit(OpCode::OpNull, vec![]);
+            }
+        }
+
+        let after_alternative_pos = compiler.instructions.len();
+        compiler.change_operand(jump_pos, after_alternative_pos as u32);
+
+        Ok(())
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {

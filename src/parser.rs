@@ -1322,7 +1322,7 @@ mod tests {
     }
 
     fn check_parser_errors(parser: &Parser) {
-        println!("{} errors", parser.errors.len());
+        //println!("{} errors", parser.errors.len());
 
         for error in parser.errors.iter() {
             println!("Parser error: {}", error);
