@@ -21,6 +21,7 @@ mod compiler;
 mod assembler;
 mod disassembler;
 mod vm;
+mod symbol_table;
 
 fn main() {
     let username = get_current_username().unwrap();

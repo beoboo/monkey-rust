@@ -8,7 +8,8 @@ use crate::evaluator::Evaluator;
 use crate::lexer::Lexer;
 use crate::macro_expander::MacroExpander;
 use crate::parser::Parser;
-use crate::vm::VM;
+use crate::vm::{VM, GLOBALS_SIZE};
+use crate::symbol_table::SymbolTable;
 
 pub struct Repl {}
 
@@ -31,6 +32,11 @@ impl Repl {
     pub fn start(input: Stdin, mut output: Stdout) {
         let mut environment = Environment::new();
         let mut macro_environment = Environment::new();
+
+        let mut constants = vec![];
+        let mut globals = Vec::with_capacity(GLOBALS_SIZE);
+        let mut symbol_table = SymbolTable::new();
+
         let matches = App::new("Monkey")
             .arg(Arg::with_name("enable-vm")
                 .long("enable-vm")
@@ -67,7 +73,7 @@ impl Repl {
             let expanded = expander.expand_macros(&program, &mut macro_environment);
 
             if enable_vm {
-                let mut compiler = Compiler::new();
+                let mut compiler = Compiler::new(&mut symbol_table, &mut constants);
                 match compiler.compile(program) {
                     Ok(_) => {}
                     Err(err) => {
@@ -76,7 +82,7 @@ impl Repl {
                     }
                 }
 
-                let mut vm = VM::new(compiler.bytecode());
+                let mut vm = VM::new(compiler.bytecode(), &mut globals);
                 match vm.run() {
                     Ok(_) => {}
                     Err(err) => {

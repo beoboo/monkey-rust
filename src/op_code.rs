@@ -24,6 +24,8 @@ pub enum OpCode {
     OpJump,
     OpJumpNotTruthy,
     OpNull,
+    OpGetGlobal,
+    OpSetGlobal,
 
     Invalid = 255,
 }
@@ -62,6 +64,8 @@ impl OpCodes {
             (OpCode::OpJump as Byte, Definition::new("OpJump".into(), vec![2])),
             (OpCode::OpJumpNotTruthy as Byte, Definition::new("OpJumpNotTruthy".into(), vec![2])),
             (OpCode::OpNull as Byte, Definition::new("OpNull".into(), vec![])),
+            (OpCode::OpGetGlobal as Byte, Definition::new("OpGetGlobal".into(), vec![2])),
+            (OpCode::OpSetGlobal as Byte, Definition::new("OpSetGlobal".into(), vec![2])),
         ].into_iter().collect();
 
         Self {

@@ -1,8 +1,9 @@
 use crate::op_code::{Instructions, OpCode, OpCodes, Byte};
 use crate::object::Object;
-use crate::ast::{Node, Statement};
+use crate::ast::{Node, Statement, LetStatement, Identifier};
 use crate::assembler::Assembler;
 use num_traits::FromPrimitive;
+use crate::symbol_table::SymbolTable;
 
 pub type CompilerError = String;
 pub type CompilerResult = std::result::Result<(), CompilerError>;
@@ -18,22 +19,24 @@ pub struct EmittedInstruction {
     position: usize,
 }
 
-pub struct Compiler {
-    pub(crate) instructions: Instructions,
-    constants: Vec<Box<dyn Object>>,
+pub struct Compiler<'a> {
+    pub instructions: Instructions,
     assembler: Assembler,
     last_instruction: EmittedInstruction,
     previous_instruction: EmittedInstruction,
+    constants: &'a mut Vec<Box<dyn Object>>,
+    symbol_table: &'a mut SymbolTable,
 }
 
-impl Compiler {
-    pub fn new() -> Self {
+impl<'a> Compiler<'a> {
+    pub fn new(symbol_table: &'a mut SymbolTable, constants: &'a mut Vec<Box<dyn Object>>) -> Self {
         Self {
             instructions: Instructions::new(),
-            constants: vec![],
             assembler: Assembler::new(OpCodes::new()),
             last_instruction: EmittedInstruction{op_code: OpCode::Invalid, position: 0},
             previous_instruction: EmittedInstruction{op_code: OpCode::Invalid, position: 0},
+            constants,
+            symbol_table,
         }
     }
 
@@ -48,6 +51,27 @@ impl Compiler {
                 Err(error) => return Err(error)
             }
         }
+
+        Ok(())
+    }
+
+    pub fn compile_let_statement(&mut self, stmt: &LetStatement) -> CompilerResult {
+        self.compile(stmt.value.clone_node())?;
+
+        let symbol = self.symbol_table.define(stmt.clone().name.value);
+        self.emit(OpCode::OpSetGlobal, vec![symbol.index as u32]);
+
+        Ok(())
+    }
+
+    pub fn compile_identifier(&mut self, identifier: &Identifier) -> CompilerResult {
+        match self.symbol_table.resolve(&identifier.value) {
+            Some(symbol) => {
+                let index = symbol.index as u32;
+                self.emit(OpCode::OpGetGlobal, vec![index]);
+            },
+            None => return Err(CompilerError::from(format!("Undefined variable {}", identifier.value)))
+        };
 
         Ok(())
     }
@@ -345,10 +369,71 @@ mod tests {
         run_tests(tests)
     }
 
+
+    #[test]
+    fn test_global_let_statements() {
+        let assembler = Assembler::new(OpCodes::new());
+        let tests = vec![
+            TestCase{
+                input: "
+                let one = 1;
+                let two = 2;
+                ",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpSetGlobal, vec![0]),
+                    assembler.assemble(OpCode::OpConstant, vec![1]),
+                    assembler.assemble(OpCode::OpSetGlobal, vec![1]),
+                ],
+                expected_constants: vec![
+                    Box::new(Integer{value: 1}),
+                    Box::new(Integer{value: 2}),
+                ],
+            },
+            TestCase{
+                input: "
+                let one = 1;
+                one;
+                ",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpSetGlobal, vec![0]),
+                    assembler.assemble(OpCode::OpGetGlobal, vec![0]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![
+                    Box::new(Integer{value: 1}),
+                ],
+            },
+            TestCase{
+                input: "
+                let one = 1;
+                let two = one;
+                two;
+                ",
+                expected_instructions: vec![
+                    assembler.assemble(OpCode::OpConstant, vec![0]),
+                    assembler.assemble(OpCode::OpSetGlobal, vec![0]),
+                    assembler.assemble(OpCode::OpGetGlobal, vec![0]),
+                    assembler.assemble(OpCode::OpSetGlobal, vec![1]),
+                    assembler.assemble(OpCode::OpGetGlobal, vec![1]),
+                    assembler.assemble(OpCode::OpPop, vec![]),
+                ],
+                expected_constants: vec![
+                    Box::new(Integer{value: 1}),
+                ],
+            },
+        ];
+
+        run_tests(tests)
+    }
+
     fn run_tests(tests: Vec<TestCase>) {
         for t in tests {
             let program = parse(t.input);
-            let mut compiler = Compiler::new();
+            let mut symbol_table = SymbolTable::new();
+            let mut constants  = vec![];
+            let mut compiler = Compiler::new(&mut symbol_table, &mut constants);
             let error = compiler.compile(program);
             if error.is_err() {
                 panic!("Error: {:?}", error.unwrap())

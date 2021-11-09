@@ -176,8 +176,8 @@ impl Node for LetStatement {
         None
     }
 
-    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
-        todo!()
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile_let_statement(self)
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {
@@ -368,8 +368,8 @@ impl Node for Identifier {
         evaluator.eval_identifier(self, env)
     }
 
-    fn compile(&self, _compiler: &mut Compiler) -> CompilerResult {
-        todo!()
+    fn compile(&self, compiler: &mut Compiler) -> CompilerResult {
+        compiler.compile_identifier(self)
     }
 
     fn modify(&self, modifier: &mut dyn Modifier) -> Box<dyn Node> {

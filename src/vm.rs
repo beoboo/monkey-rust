@@ -9,26 +9,31 @@ pub type VMError = String;
 pub type VMResult = std::result::Result<(), VMError>;
 
 
-const STACK_SIZE: usize = 2048;
+pub const STACK_SIZE: usize = 2048;
+pub const GLOBALS_SIZE: usize = 65536;
 
-pub struct VM {
+pub struct VM<'a> {
     constants: Vec<Box<dyn Object>>,
     instructions: Instructions,
 
     stack: Vec<Box<dyn Object>>,
+    globals: &'a mut Vec<Box<dyn Object>>,
     sp: usize,
-    pub last_top: Option<Box<dyn Object>>,
+
     true_val: Box<Boolean>,
     false_val: Box<Boolean>,
     null_val: Box<Null>,
+
+    pub last_top: Option<Box<dyn Object>>,
 }
 
-impl VM {
-    pub fn new(bytecode: ByteCode) -> Self {
+impl<'a> VM<'a> {
+    pub fn new(bytecode: ByteCode, globals: &'a mut Vec<Box<dyn Object>>) -> Self {
         Self {
             constants: bytecode.constants,
             instructions: bytecode.instructions,
             stack: Vec::with_capacity(STACK_SIZE),
+            globals,
             sp: 0,
             last_top: None,
             true_val: Box::new(Boolean { value: true }),
@@ -88,6 +93,23 @@ impl VM {
                     if !self.is_truthy(condition) {
                         ip = pos - 1;
                     }
+                }
+                OpCode::OpSetGlobal => {
+                    let index = from_u16(&self.instructions[ip + 1..]) as usize;
+                    ip += 2;
+
+                    let global = self.pop();
+                    self.globals.insert(index, global);
+                }
+                OpCode::OpGetGlobal => {
+                    let index = from_u16(&self.instructions[ip + 1..]) as usize;
+                    ip += 2;
+
+                    let global = match self.globals.get(index) {
+                        Some(global) => global.clone(),
+                        None=> return Err(VMError::from(format!("No global found in #{} index", index)))
+                    };
+                    self.push(global)?
                 }
                 _ => return Err(format!("Unhandled op code: {:?}", op_code))
             }
@@ -212,6 +234,7 @@ mod tests {
     use crate::parser::Parser;
 
     use super::*;
+    use crate::symbol_table::SymbolTable;
 
 // use crate::code::OpCodes;
     // use crate::disassembler::Disassembler;
@@ -223,84 +246,112 @@ mod tests {
 
     #[test]
     fn test_integer_arithmetic() {
-        let tests = vec![
-            TestCase { input: "1", expected: Box::new(Integer { value: 1 }) },
-            TestCase { input: "2", expected: Box::new(Integer { value: 2 }) },
-            TestCase { input: "1 + 2", expected: Box::new(Integer { value: 3 }) },
-            TestCase { input: "1 - 2", expected: Box::new(Integer { value: -1 }) },
-            TestCase { input: "1 * 2", expected: Box::new(Integer { value: 2 }) },
-            TestCase { input: "4 / 2", expected: Box::new(Integer { value: 2 }) },
-            TestCase { input: "50 / 2 * 2 + 10 - 5", expected: Box::new(Integer { value: 55 }) },
-            TestCase { input: "5 + 5 + 5 + 5 - 10", expected: Box::new(Integer { value: 10 }) },
-            TestCase { input: "2 * 2 * 2 * 2 * 2", expected: Box::new(Integer { value: 32 }) },
-            TestCase { input: "5 * 2 + 10", expected: Box::new(Integer { value: 20 }) },
-            TestCase { input: "5 + 2 * 10", expected: Box::new(Integer { value: 25 }) },
-            TestCase { input: "5 * (2 + 10)", expected: Box::new(Integer { value: 60 }) },
-            TestCase { input: "-5", expected: Box::new(Integer { value: -5 }) },
-            TestCase { input: "-10", expected: Box::new(Integer { value: -10 }) },
-            TestCase { input: "-50 + 100 + -50", expected: Box::new(Integer { value: 0 }) },
-            TestCase { input: "(5 + 10 * 2 + 15 / 3) * 2 + -10", expected: Box::new(Integer { value: 50 }) },
-        ];
+        let tests = build_test_cases(vec![
+            ("1", integer(1)),
+            ("2", integer(2)),
+            ("1 + 2", integer(3)),
+            ("1 - 2", integer(-1)),
+            ("1 * 2", integer(2)),
+            ("4 / 2", integer(2)),
+            ("50 / 2 * 2 + 10 - 5", integer(55)),
+            ("5 + 5 + 5 + 5 - 10", integer(10)),
+            ("2 * 2 * 2 * 2 * 2", integer(32)),
+            ("5 * 2 + 10", integer(20)),
+            ("5 + 2 * 10", integer(25)),
+            ("5 * (2 + 10)", integer(60)),
+            ("-5", integer(-5)),
+            ("-10", integer(-10)),
+            ("-50 + 100 + -50", integer(0)),
+            ("(5 + 10 * 2 + 15 / 3) * 2 + -10", integer(50)),
+        ]);
 
         run_tests(tests)
     }
 
     #[test]
     fn test_boolean_logic() {
-        let tests = vec![
-            TestCase { input: "true", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "false", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "1 < 2", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "1 > 2", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "1 < 1", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "1 > 1", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "1 == 1", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "1 != 1", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "1 == 2", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "1 != 2", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "true == true", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "false == false", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "true == false", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "true != false", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "false != true", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "(1 < 2) == true", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "(1 < 2) == false", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "(1 > 2) == true", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "(1 > 2) == false", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "!true", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "!false", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "!5", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "!!true", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "!!false", expected: Box::new(Boolean { value: false }) },
-            TestCase { input: "!!5", expected: Box::new(Boolean { value: true }) },
-            TestCase { input: "!(if (false) { 10 })", expected: Box::new(Boolean { value: true }) },
-        ];
+        let tests = build_test_cases(vec![
+            ("true", boolean(true)),
+            ("false", boolean(false)),
+            ("1 < 2", boolean(true)),
+            ("1 > 2", boolean(false)),
+            ("1 < 1", boolean(false)),
+            ("1 > 1", boolean(false)),
+            ("1 == 1", boolean(true)),
+            ("1 != 1", boolean(false)),
+            ("1 == 2", boolean(false)),
+            ("1 != 2", boolean(true)),
+            ("true == true", boolean(true)),
+            ("false == false", boolean(true)),
+            ("true == false", boolean(false)),
+            ("true != false", boolean(true)),
+            ("false != true", boolean(true)),
+            ("(1 < 2) == true", boolean(true)),
+            ("(1 < 2) == false", boolean(false)),
+            ("(1 > 2) == true", boolean(false)),
+            ("(1 > 2) == false", boolean(true)),
+            ("!true", boolean(false)),
+            ("!false", boolean(true)),
+            ("!5", boolean(false)),
+            ("!!true", boolean(true)),
+            ("!!false", boolean(false)),
+            ("!!5", boolean(true)),
+            ("!(if (false) { 10 })", boolean(true)),
+        ]);
 
         run_tests(tests)
     }
 
     #[test]
     fn test_conditionals() {
-        let tests = vec![
-            TestCase { input: "if (true) { 10 }", expected: Box::new(Integer { value: 10 }) },
-            TestCase { input: "if (true) { 10 } else { 20 }", expected: Box::new(Integer { value: 10 }) },
-            TestCase { input: "if (false) { 10 } else { 20 }", expected: Box::new(Integer { value: 20 }) },
-            TestCase { input: "if (1) { 10 }", expected: Box::new(Integer { value: 10 }) },
-            TestCase { input: "if (1 < 2) { 10 }", expected: Box::new(Integer { value: 10 }) },
-            TestCase { input: "if (1 < 2) { 10 } else { 20 }", expected: Box::new(Integer { value: 10 }) },
-            TestCase { input: "if (1 > 2) { 10 } else { 20 }", expected: Box::new(Integer { value: 20 }) },
-            TestCase { input: "if (1 > 2) { 10 }", expected: Box::new(Null {}) },
-            TestCase { input: "if (false) { 10 }", expected: Box::new(Null {}) },
-            TestCase { input: "if (if (false) { 10 }) { 10 } else { 20 }", expected: Box::new(Integer { value: 20 }) },
-        ];
+        let tests = build_test_cases(vec![
+            ("if (true) { 10 }", integer(10)),
+            ("if (true) { 10 } else { 20 }", integer(10)),
+            ("if (false) { 10 } else { 20 }", integer(20)),
+            ("if (1) { 10 }", integer(10)),
+            ("if (1 < 2) { 10 }", integer(10)),
+            ("if (1 < 2) { 10 } else { 20 }", integer(10)),
+            ("if (1 > 2) { 10 } else { 20 }", integer(20)),
+            ("if (1 > 2) { 10 }", Box::new(Null {})),
+            ("if (false) { 10 }", Box::new(Null {})),
+            ("if (if (false) { 10 }) { 10 } else { 20 }", integer(20)),
+        ]);
 
         run_tests(tests)
     }
 
+
+    #[test]
+    fn test_let_statements() {
+        let tests = build_test_cases(vec![
+            ("let one = 1; one", integer(1)),
+            ("let one = 1; let two = 2; one + two", integer(3)),
+            ("let one = 1; let two = one + one; one + two", integer(3)),
+        ]);
+
+        run_tests(tests)
+    }
+
+    fn build_test_cases(tests: Vec<(&str, Box<dyn Object>)>) -> Vec<TestCase> {
+        tests.iter().map(|(input, expected)| TestCase { input: *input, expected: expected.clone_box() })
+            .collect::<Vec<_>>()
+    }
+
+    fn integer(value: i64) -> Box<dyn Object> {
+        Box::new(Integer { value })
+    }
+
+    fn boolean(value: bool) -> Box<dyn Object> {
+        Box::new(Boolean { value })
+    }
+
+
     fn run_tests(tests: Vec<TestCase>) {
         for t in tests {
             let program = parse(t.input);
-            let mut compiler = Compiler::new();
+            let mut symbol_table = SymbolTable::new();
+            let mut constants  = vec![];
+            let mut compiler = Compiler::new(&mut symbol_table, &mut constants);
             let error = compiler.compile(program);
             assert!(error.is_ok());
 
@@ -311,7 +362,8 @@ mod tests {
             // for (i, c) in bytecode.constants.iter().enumerate() {
             //     println!("#{}: {}", i, c.inspect());
             // }
-            let mut vm = VM::new(bytecode);
+            let mut globals = vec![];
+            let mut vm = VM::new(bytecode, &mut globals);
             let res = vm.run();
             if res.is_err() {
                 println!("{:?}", res);
